@@ -1,0 +1,48 @@
+// lib/models/product.dart
+class Product {
+  final int? id;
+  final String barcode;
+  final String productName;
+  final String brand;
+  final String category;
+  final double price;
+  final int stock;
+  final String? imageUrl;
+
+  Product({
+    this.id,
+    required this.barcode,
+    required this.productName,
+    required this.brand,
+    required this.category,
+    required this.price,
+    required this.stock,
+    this.imageUrl,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'barcode': barcode,
+      'product_name': productName,
+      'brand': brand,
+      'category': category,
+      'price': price,
+      'stock': stock,
+      'image_url': imageUrl,
+    };
+  }
+
+  factory Product.fromMap(Map<String, dynamic> map) {
+    return Product(
+      id: map['id'],
+      barcode: map['barcode'] ?? '',
+      productName: map['product_name'] ?? '',
+      brand: map['brand'] ?? '',
+      category: map['category'] ?? '',
+      price: double.parse(map['price']?.toString() ?? '0'),
+      stock: int.parse(map['stock']?.toString() ?? '0'),
+      imageUrl: map['image_url'],
+    );
+  }
+}

@@ -1,0 +1,30 @@
+name: inventory_app
+description: "A inventory management application"
+
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  mobile_scanner: ^7.4.0
+  http: ^1.6.0
+  printing: ^5.11.0
+  path_provider: ^2.1.0
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+
+  uses-material-design: true
