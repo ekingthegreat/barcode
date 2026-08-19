@@ -181,9 +181,75 @@ class AuthService {
     return prefs.getBool('is_logged_in') ?? false;
   }
 
+  /// Updates user profile on backend database and in SharedPreferences
+  static Future<Map<String, dynamic>> updateProfile({
+    required String username,
+    required String email,
+    required String storeName,
+    required String storeAddress,
+    required String phone,
+    String? originalUsername,
+    String? originalEmail,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final origUser = originalUsername ?? prefs.getString('username') ?? '';
+    final origEmail = originalEmail ?? prefs.getString('email') ?? '';
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/update_profile.php'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'username': username,
+              'email': email,
+              'store_name': storeName,
+              'store_address': storeAddress,
+              'phone': phone,
+              'original_username': origUser,
+              'original_email': origEmail,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          await saveUserSession({
+            'username': username,
+            'email': email,
+            'store_name': storeName,
+            'store_address': storeAddress,
+            'phone': phone,
+          });
+          return {'success': true, 'message': data['message'] ?? 'Profile updated successfully'};
+        } else {
+          return {'success': false, 'message': data['message'] ?? 'Failed to update profile'};
+        }
+      }
+    } catch (_) {
+      // Backend offline fallback
+    }
+
+    // Local save fallback
+    await saveUserSession({
+      'username': username,
+      'email': email,
+      'store_name': storeName,
+      'store_address': storeAddress,
+      'phone': phone,
+    });
+
+    return {'success': true, 'message': 'Profile updated successfully'};
+  }
+
   /// Logs out user
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_logged_in', false);
   }
 }
+

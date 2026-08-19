@@ -17,4 +17,8 @@ class ApiConfig {
 
   /// Auth endpoints (e.g. http://192.168.1.150/barcode/auth)
   static const String authUrl = '$baseUrl/auth';
+
+  /// Stats endpoint (e.g. http://192.168.1.150/barcode/products/get_stats.php)
+  static const String statsUrl = '$productsUrl/get_stats.php';
 }
+
