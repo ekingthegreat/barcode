@@ -9,7 +9,7 @@ class ReceiptService {
     // Header
     buffer.writeln('=' * 32);
     buffer.writeln('  INVENTORY MANAGEMENT SYSTEM');
-    buffer.writeln('  ' + '-' * 28);
+    buffer.writeln('  ${'-' * 28}');
     buffer.writeln('  SALES RECEIPT');
     buffer.writeln('=' * 32);
     buffer.writeln();
@@ -38,9 +38,9 @@ class ReceiptService {
     buffer.writeln();
     
     // Totals
-    buffer.writeln('TOTAL:'.padRight(20) + '₱${orderData['total_amount'].toStringAsFixed(2)}');
-    buffer.writeln('Cash:'.padRight(20) + '₱${orderData['cash_received'].toStringAsFixed(2)}');
-    buffer.writeln('Change:'.padRight(20) + '₱${orderData['change'].toStringAsFixed(2)}');
+    buffer.writeln('${'TOTAL:'.padRight(20)}₱${orderData['total_amount'].toStringAsFixed(2)}');
+    buffer.writeln('${'Cash:'.padRight(20)}₱${orderData['cash_received'].toStringAsFixed(2)}');
+    buffer.writeln('${'Change:'.padRight(20)}₱${orderData['change'].toStringAsFixed(2)}');
     buffer.writeln();
     buffer.writeln('=' * 32);
     buffer.writeln('  Thank you for your purchase!');
@@ -64,10 +64,7 @@ class ReceiptService {
     // For printing to a 58mm thermal printer via USB/Bluetooth
     // You would need a package like flutter_thermal_printer
     // For now, we'll save it to a file
-    final file = await saveReceipt(receiptText);
-    print('Receipt saved to: ${file.path}');
-    
-    // Show the receipt in a dialog
+    await saveReceipt(receiptText);
     return;
   }
 }

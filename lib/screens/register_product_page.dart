@@ -7,17 +7,18 @@ import '../models/product.dart';
 import '../services/product_service.dart';
 
 class RegisterProductPage extends StatefulWidget {
+  final Product? initialProduct;
+
   const RegisterProductPage({
     super.key,
+    this.initialProduct,
   });
 
   @override
-  State<RegisterProductPage> createState() =>
-      _RegisterProductPageState();
+  State<RegisterProductPage> createState() => _RegisterProductPageState();
 }
 
-class _RegisterProductPageState
-    extends State<RegisterProductPage> {
+class _RegisterProductPageState extends State<RegisterProductPage> {
   final barcodeController = TextEditingController();
   final nameController = TextEditingController();
   final brandController = TextEditingController();
@@ -68,34 +69,43 @@ class _RegisterProductPageState
       stock: int.tryParse(stockController.text) ?? 0,
     );
 
+    final isEditing = widget.initialProduct != null;
     try {
-      final success = await ProductService.registerProduct(product);
+      final success = isEditing
+          ? await ProductService.updateProduct(product)
+          : await ProductService.registerProduct(product);
 
       if (!mounted) return;
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              '✓ Product registered successfully',
-              style: TextStyle(fontWeight: FontWeight.bold),
+              isEditing
+                  ? '✓ Product updated successfully'
+                  : '✓ Product registered successfully',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
         );
 
-        barcodeController.clear();
-        nameController.clear();
-        brandController.clear();
-        categoryController.clear();
-        priceController.clear();
-        stockController.clear();
+        if (isEditing) {
+          Navigator.pop(context, true);
+        } else {
+          barcodeController.clear();
+          nameController.clear();
+          brandController.clear();
+          categoryController.clear();
+          priceController.clear();
+          stockController.clear();
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Failed to register product',
+              isEditing ? 'Failed to update product' : 'Failed to register product',
             ),
             backgroundColor: Colors.orange,
             behavior: SnackBarBehavior.floating,
@@ -168,7 +178,7 @@ class _RegisterProductPageState
             BoxShadow(
               color: Colors.black26,
               blurRadius: 10,
-              offset: Offset(0, 4),
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -178,28 +188,10 @@ class _RegisterProductPageState
               controller: scannerController!,
               onDetect: onBarcodeDetected,
             ),
-            // Scanner overlay
-            Center(
-              child: Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Colors.white,
-                    width: 3,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                  child: Text(
-                    'Align barcode here',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ),
+            // Scanner overlay with corner markers
+            CustomPaint(
+              painter: RegisterScannerOverlayPainter(),
+              size: Size(MediaQuery.of(context).size.width, 300),
             ),
             Positioned(
               top: 16,
@@ -210,6 +202,24 @@ class _RegisterProductPageState
                   Icons.close,
                   color: Colors.white,
                   size: 30,
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 20,
+              left: 0,
+              right: 0,
+              child: const Center(
+                child: Text(
+                  'Align barcode within the frame',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    shadows: [
+                      Shadow(blurRadius: 10, color: Colors.black54),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -231,14 +241,14 @@ class _RegisterProductPageState
         Container(
           height: 56,
           decoration: BoxDecoration(
-            color: Colors.blue.shade50,
+            color: Colors.deepPurple.shade50,
             borderRadius: BorderRadius.circular(8),
           ),
           child: IconButton(
             onPressed: startBarcodeScan,
             icon: Icon(
               Icons.qr_code_scanner,
-              color: Colors.blue.shade700,
+              color: Colors.deepPurple.shade700,
               size: 30,
             ),
             tooltip: 'Scan Barcode',
@@ -289,8 +299,8 @@ class _RegisterProductPageState
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(
-              color: Colors.blue,
+            borderSide: BorderSide(
+              color: Colors.deepPurple.shade700,
               width: 2.0,
             ),
           ),
@@ -312,7 +322,7 @@ class _RegisterProductPageState
     return Scaffold(
       body: Column(
         children: [
-          // Header with red gradient
+          // Header matching ScanProductPage style
           Container(
             padding: EdgeInsets.only(
               top: MediaQuery.of(context).padding.top + 16,
@@ -320,20 +330,20 @@ class _RegisterProductPageState
               right: 24,
               bottom: 24,
             ),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  Color(0xFFC62828), // Dark red
-                  Color(0xFFE53935), // Bright red
+                  Colors.deepPurple.shade700,
+                  Colors.deepPurple.shade500,
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.red,
+                  color: Colors.deepPurple.withOpacity(0.3),
                   blurRadius: 20,
-                  offset: Offset(0, 4),
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
@@ -343,33 +353,33 @@ class _RegisterProductPageState
                 Row(
                   children: [
                     Container(
-                      width: 40,
-                      height: 40,
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.inventory_2,
-                        color: Color(0xFFC62828),
+                        color: Colors.deepPurple.shade700,
                         size: 24,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    const Column(
+                    const SizedBox(width: 14),
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Register Product',
-                          style: TextStyle(
+                          widget.initialProduct != null ? 'Edit Product' : 'Register Product',
+                          style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 22,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         Text(
-                          'Add new product to inventory',
-                          style: TextStyle(
+                          widget.initialProduct != null ? 'Update product details' : 'Add new product to inventory',
+                          style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 12,
                           ),
@@ -378,12 +388,18 @@ class _RegisterProductPageState
                     ),
                   ],
                 ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(
-                    Icons.close,
-                    color: Colors.white,
-                    size: 28,
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 26,
+                    ),
                   ),
                 ),
               ],
@@ -396,180 +412,127 @@ class _RegisterProductPageState
                 if (isScanning) return;
                 FocusScope.of(context).unfocus();
               },
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Barcode section
-                    buildBarcodeSection(),
-                    if (!isScanning) ...[
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Or enter product details manually',
-                        style: TextStyle(
-                          color: Colors.grey,
-                          fontSize: 12,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                    const SizedBox(height: 8),
-                    // Form fields
-                    input(
-                      'Product Name *',
-                      nameController,
-                      nameFocus,
-                    ),
-                    input(
-                      'Brand',
-                      brandController,
-                      brandFocus,
-                    ),
-                    input(
-                      'Category',
-                      categoryController,
-                      categoryFocus,
-                    ),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: input(
-                            'Price',
-                            priceController,
-                            priceFocus,
-                            keyboardType: TextInputType.number,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: input(
-                            'Stock',
-                            stockController,
-                            stockFocus,
-                            keyboardType: TextInputType.number,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    // Register button
-                    Container(
-                      width: double.infinity,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [
-                            Color(0xFFC62828),
-                            Color(0xFFE53935),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Barcode section
+                      buildBarcodeSection(),
+                      if (!isScanning) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              size: 14,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Or enter product details manually',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
                           ],
                         ),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.red.withOpacity(0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
+                        const SizedBox(height: 16),
+                      ],
+                      const SizedBox(height: 8),
+                      // Form fields
+                      input(
+                        'Product Name *',
+                        nameController,
+                        nameFocus,
+                      ),
+                      input(
+                        'Brand',
+                        brandController,
+                        brandFocus,
+                      ),
+                      input(
+                        'Category',
+                        categoryController,
+                        categoryFocus,
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: input(
+                              'Price',
+                              priceController,
+                              priceFocus,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: input(
+                              'Stock',
+                              stockController,
+                              stockFocus,
+                              keyboardType: TextInputType.number,
+                            ),
                           ),
                         ],
                       ),
-                      child: ElevatedButton(
-                        onPressed: loading || isScanning ? null : registerProduct,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                      const SizedBox(height: 24),
+                      // Register button matching ScanProductPage style
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton.icon(
+                          onPressed: loading || isScanning ? null : registerProduct,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple.shade700,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
                           ),
-                        ),
-                        child: loading
-                            ? const SizedBox(
-                                height: 24,
-                                width: 24,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 3,
+                          icon: loading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.save, size: 24),
+                          label: loading
+                              ? Text(
+                                  widget.initialProduct != null ? 'UPDATING...' : 'REGISTERING...',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.2,
+                                  ),
+                                )
+                              : Text(
+                                  widget.initialProduct != null ? 'UPDATE PRODUCT' : 'REGISTER PRODUCT',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.2,
+                                  ),
                                 ),
-                              )
-                            : const Text(
-                                'REGISTER PRODUCT',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  letterSpacing: 1.2,
-                                ),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // Footer
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade900,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black26,
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Inventory Management System',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    Text(
-                      'v1.0.0 • All rights reserved',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.4),
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade800,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(
-                        Icons.store,
-                        color: Colors.white54,
-                        size: 14,
-                      ),
-                      SizedBox(width: 4),
-                      Text(
-                        'My Store',
-                        style: TextStyle(
-                          color: Colors.white54,
-                          fontSize: 12,
                         ),
                       ),
+                      const SizedBox(height: 32),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -580,6 +543,15 @@ class _RegisterProductPageState
   @override
   void initState() {
     super.initState();
+    if (widget.initialProduct != null) {
+      final p = widget.initialProduct!;
+      barcodeController.text = p.barcode;
+      nameController.text = p.productName;
+      brandController.text = p.brand;
+      categoryController.text = p.category;
+      priceController.text = p.price > 0 ? p.price.toString() : '';
+      stockController.text = p.stock.toString();
+    }
   }
 
   @override
@@ -601,4 +573,57 @@ class _RegisterProductPageState
     scannerController?.dispose();
     super.dispose();
   }
+}
+
+// Scanner overlay painter matching ScanProductPage style
+class RegisterScannerOverlayPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.black.withOpacity(0.4)
+      ..style = PaintingStyle.fill;
+
+    final double scanAreaWidth = 220;
+    final double scanAreaHeight = 200;
+    final double left = (size.width - scanAreaWidth) / 2;
+    final double top = (size.height - scanAreaHeight) / 2;
+
+    final path = Path()
+      ..addRect(Rect.fromLTRB(0, 0, size.width, size.height))
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(left, top, left + scanAreaWidth, top + scanAreaHeight),
+          const Radius.circular(15),
+        ),
+      )
+      ..fillType = PathFillType.evenOdd;
+
+    canvas.drawPath(path, paint);
+
+    final cornerPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4;
+
+    const double cornerLength = 25;
+
+    // Top-left
+    canvas.drawLine(Offset(left, top + cornerLength), Offset(left, top), cornerPaint);
+    canvas.drawLine(Offset(left, top), Offset(left + cornerLength, top), cornerPaint);
+
+    // Top-right
+    canvas.drawLine(Offset(left + scanAreaWidth - cornerLength, top), Offset(left + scanAreaWidth, top), cornerPaint);
+    canvas.drawLine(Offset(left + scanAreaWidth, top), Offset(left + scanAreaWidth, top + cornerLength), cornerPaint);
+
+    // Bottom-left
+    canvas.drawLine(Offset(left, top + scanAreaHeight - cornerLength), Offset(left, top + scanAreaHeight), cornerPaint);
+    canvas.drawLine(Offset(left, top + scanAreaHeight), Offset(left + cornerLength, top + scanAreaHeight), cornerPaint);
+
+    // Bottom-right
+    canvas.drawLine(Offset(left + scanAreaWidth - cornerLength, top + scanAreaHeight), Offset(left + scanAreaWidth, top + scanAreaHeight), cornerPaint);
+    canvas.drawLine(Offset(left + scanAreaWidth, top + scanAreaHeight - cornerLength), Offset(left + scanAreaWidth, top + scanAreaHeight), cornerPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

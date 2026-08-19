@@ -294,7 +294,9 @@ class _ScanProductPageState extends State<ScanProductPage> {
 
                   // Save order
                   await _saveOrderToDatabase(change);
-                  Navigator.pop(context);
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
@@ -331,6 +333,8 @@ class _ScanProductPageState extends State<ScanProductPage> {
       if (success) {
         // Print receipt
         await _printReceipt(orderData);
+
+        if (!mounted) return;
 
         // Clear cart
         setState(() {
@@ -567,23 +571,20 @@ class _ScanProductPageState extends State<ScanProductPage> {
         name: 'receipt_${DateTime.now().millisecondsSinceEpoch}.pdf',
       );
 
-    } catch (e) {
-      print('Error printing: $e');
+    } catch (_) {
       // Fallback: save to file
       try {
         final dir = await getApplicationDocumentsDirectory();
         final file = File('${dir.path}/receipt_${DateTime.now().millisecondsSinceEpoch}.pdf');
-        
-        
+
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Receipt saved to: ${file.path}'),
             backgroundColor: Colors.blue,
           ),
         );
-      } catch (e) {
-        print('Error saving receipt: $e');
-      }
+      } catch (_) {}
     }
   }
 
