@@ -50,17 +50,25 @@ class _ReceiptPrintModalState extends State<ReceiptPrintModal> {
       _isLoadingPrinter = true;
     });
 
-    final savedName = await ReceiptService.getSavedPrinterName();
-    final savedType = await ReceiptService.getSavedPrinterType();
-    final printer = await ReceiptService.getSavedPrinter();
+    try {
+      final savedName = await ReceiptService.getSavedPrinterName();
+      final savedType = await ReceiptService.getSavedPrinterType();
+      final printer = await ReceiptService.getSavedPrinter();
 
-    if (mounted) {
-      setState(() {
-        _savedPrinterName = savedName;
-        _savedPrinterType = savedType ?? printer?.connectionType;
-        _selectedPrinter = printer;
-        _isLoadingPrinter = false;
-      });
+      if (mounted) {
+        setState(() {
+          _savedPrinterName = savedName;
+          _savedPrinterType = savedType ?? printer?.connectionType;
+          _selectedPrinter = printer;
+          _isLoadingPrinter = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoadingPrinter = false;
+        });
+      }
     }
   }
 
@@ -209,7 +217,7 @@ class _ReceiptPrintModalState extends State<ReceiptPrintModal> {
                                 ),
                               ),
                               Text(
-                                'Supports Bluetooth & Wired USB (58mm)',
+                                'Bluetooth & Wired USB Support (58mm)',
                                 style: TextStyle(fontSize: 11.5, color: Colors.grey),
                               ),
                             ],
@@ -297,7 +305,7 @@ class _ReceiptPrintModalState extends State<ReceiptPrintModal> {
                                 ? 'Checking saved printer...'
                                 : activeName != null
                                     ? 'Ready for 58mm printing'
-                                    : 'Tap Select to connect Bluetooth / USB Cable',
+                                    : 'Tap Select to choose Bluetooth / USB printer',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey.shade600,
@@ -426,6 +434,7 @@ class PrinterSelectionDialog extends StatefulWidget {
 class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
   List<DiscoveredPrinter> _allPrinters = [];
   bool _isLoading = true;
+  bool _isBluetoothOn = true;
   String? _savedPrinterName;
   String? _savedPrinterType;
   DiscoveredPrinter? _selectedPrinter;
@@ -443,6 +452,7 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
     });
 
     try {
+      final isBtOn = await ReceiptService.isBluetoothEnabled();
       final savedName = await ReceiptService.getSavedPrinterName();
       final savedType = await ReceiptService.getSavedPrinterType();
       final list = await ReceiptService.getAllPrinters();
@@ -460,6 +470,7 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
 
       if (mounted) {
         setState(() {
+          _isBluetoothOn = isBtOn;
           _allPrinters = list;
           _savedPrinterName = savedName;
           _savedPrinterType = savedType;
@@ -510,7 +521,7 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
                 size: 18,
               ),
               const SizedBox(width: 8),
-              Text('✓ Default printer: ${printer.name} (${printer.connectionType})'),
+              Text('✓ Selected: ${printer.name} (${printer.connectionType})'),
             ],
           ),
           backgroundColor: Colors.green,
@@ -588,7 +599,7 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  'Bluetooth Devices & Wired USB',
+                  'All Bluetooth Devices & Wired USB',
                   style: TextStyle(fontSize: 11, color: Colors.grey),
                 ),
               ],
@@ -643,6 +654,34 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
                 ),
               ),
 
+            // Bluetooth OFF Warning
+            if (!_isBluetoothOn)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade300),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.bluetooth_disabled, color: Colors.orange.shade800, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Bluetooth is OFF. Please turn ON Bluetooth in phone settings.',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange.shade900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             // Connection Filter Tabs
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -668,7 +707,7 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
                     children: [
                       CircularProgressIndicator(),
                       SizedBox(height: 10),
-                      Text('Scanning paired Bluetooth & USB devices...', style: TextStyle(fontSize: 12.5)),
+                      Text('Scanning Bluetooth & USB devices...', style: TextStyle(fontSize: 12.5)),
                     ],
                   ),
                 ),
@@ -689,7 +728,7 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
                         Icon(Icons.bluetooth_searching, color: Colors.deepPurple.shade800, size: 20),
                         const SizedBox(width: 8),
                         Text(
-                          'No Paired Bluetooth Devices Found',
+                          'No Bluetooth Devices Found',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12.5,

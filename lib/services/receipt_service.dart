@@ -1,6 +1,7 @@
 // lib/services/receipt_service.dart
 // ignore_for_file: use_build_context_synchronously
 
+import 'dart:async';
 import 'dart:io';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/material.dart';
@@ -31,22 +32,46 @@ class ReceiptService {
   static const String _prefPrinterAddress = 'selected_printer_address';
   static const String _prefPrinterType = 'selected_printer_type';
 
-  /// Scans and returns all available printers:
-  /// - Paired Bluetooth thermal printers (Officom, POS-58, MTP-2, etc.)
+  /// Checks if Bluetooth is turned ON on the device
+  static Future<bool> isBluetoothEnabled() async {
+    try {
+      if (Platform.isWindows) return true;
+      return await PrintBluetoothThermal.bluetoothEnabled
+          .timeout(const Duration(milliseconds: 1500), onTimeout: () => true);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Checks if Bluetooth runtime permission is granted on Android
+  static Future<bool> isBluetoothPermissionGranted() async {
+    try {
+      if (Platform.isWindows) return true;
+      return await PrintBluetoothThermal.isPermissionBluetoothGranted
+          .timeout(const Duration(milliseconds: 1500), onTimeout: () => true);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Scans and returns all available printers without hanging:
+  /// - Paired / Available Bluetooth devices (Officom, POS-58, MTP-2, etc.)
   /// - Wired USB / System printers
   static Future<List<DiscoveredPrinter>> getAllPrinters() async {
     final List<DiscoveredPrinter> results = [];
     final Set<String> seenNames = {};
 
-    // 1. Scan Paired Bluetooth Devices directly via Bluetooth adapter
+    // 1. Scan Paired Bluetooth Devices directly from Android Bluetooth Adapter
     try {
-      final List<BluetoothInfo> btList = await PrintBluetoothThermal.pairedBluetooths;
+      final List<BluetoothInfo> btList = await PrintBluetoothThermal.pairedBluetooths
+          .timeout(const Duration(milliseconds: 2500), onTimeout: () => []);
       for (var bt in btList) {
-        if (bt.name.isNotEmpty && !seenNames.contains(bt.name)) {
-          seenNames.add(bt.name);
+        final displayName = bt.name.trim().isNotEmpty ? bt.name.trim() : 'Bluetooth Device (${bt.macAdress})';
+        if (!seenNames.contains(displayName)) {
+          seenNames.add(displayName);
           results.add(
             DiscoveredPrinter(
-              name: bt.name,
+              name: displayName,
               address: bt.macAdress,
               connectionType: 'Bluetooth',
               isBluetooth: true,
@@ -58,14 +83,16 @@ class ReceiptService {
 
     // 2. Scan USB / Wired / System Printers
     try {
-      final list = await Printing.listPrinters();
+      final list = await Printing.listPrinters()
+          .timeout(const Duration(milliseconds: 2000), onTimeout: () => []);
       for (var p in list) {
-        if (p.name.isNotEmpty && !seenNames.contains(p.name)) {
-          seenNames.add(p.name);
+        final displayName = p.name.trim();
+        if (displayName.isNotEmpty && !seenNames.contains(displayName)) {
+          seenNames.add(displayName);
           final type = detectConnectionType(p);
           results.add(
             DiscoveredPrinter(
-              name: p.name,
+              name: displayName,
               address: p.url,
               connectionType: type,
               isBluetooth: type == 'Bluetooth',
@@ -352,16 +379,20 @@ class ReceiptService {
 
       // 1. Bluetooth Thermal Printing (Officom, POS-58, MTP-2)
       if (printer.isBluetooth && printer.address.isNotEmpty) {
-        final isConnected = await PrintBluetoothThermal.connectionStatus;
+        final isConnected = await PrintBluetoothThermal.connectionStatus
+            .timeout(const Duration(milliseconds: 1500), onTimeout: () => false);
+
         if (!isConnected) {
-          final connected = await PrintBluetoothThermal.connect(macPrinterAddress: printer.address);
+          final connected = await PrintBluetoothThermal.connect(macPrinterAddress: printer.address)
+              .timeout(const Duration(seconds: 5), onTimeout: () => false);
           if (!connected) {
-            throw Exception('Could not connect to ${printer.name}. Make sure printer is powered ON.');
+            throw Exception('Could not connect to ${printer.name}. Please ensure the printer is turned ON and in Bluetooth range.');
           }
         }
 
         final bytes = await generateEscPosBytes(orderData);
-        final result = await PrintBluetoothThermal.writeBytes(bytes);
+        final result = await PrintBluetoothThermal.writeBytes(bytes)
+            .timeout(const Duration(seconds: 5), onTimeout: () => false);
         return result;
       }
 
