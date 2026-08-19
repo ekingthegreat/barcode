@@ -18,9 +18,10 @@ dependencies:
   printing: ^5.11.0
   path_provider: ^2.1.0
   path: ^1.9.0
-  pdf: ^3.12.0
   intl: ^0.18.0
   shared_preferences: ^2.2.2
+  print_bluetooth_thermal: ^1.2.1
+  esc_pos_utils_plus: ^2.0.4
 dev_dependencies:
   flutter_test:
     sdk: flutter

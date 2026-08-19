@@ -744,9 +744,10 @@ class _ScanProductPageState extends State<ScanProductPage> {
                       ),
                     ),
                     icon: const Icon(Icons.receipt, size: 18),
-                    label: const Text('Reprint 58mm'),
+                    label: const Text('Receipt & Print'),
                   ),
                 ),
+
                 const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton.icon(

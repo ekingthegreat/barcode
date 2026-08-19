@@ -400,7 +400,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
                   height: 48,
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      ReceiptService.printDirect(transaction, context: context);
+                      ReceiptService.showReceiptModal(context, transaction);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.deepPurple.shade700,
@@ -411,11 +411,12 @@ class _TransactionsPageState extends State<TransactionsPage> {
                     ),
                     icon: const Icon(Icons.print, size: 20),
                     label: const Text(
-                      'PRINT RECEIPT (58mm)',
+                      'VIEW & PRINT RECEIPT (58mm)',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 16),
               ],
             ),

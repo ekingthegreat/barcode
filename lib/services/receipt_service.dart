@@ -2,50 +2,160 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../widgets/printer_dialog.dart';
+
+/// Unified model for discovered thermal printers (Bluetooth or USB)
+class DiscoveredPrinter {
+  final String name;
+  final String address; // MAC address for Bluetooth or URL for USB
+  final String connectionType; // 'Bluetooth', 'USB Wired', 'Network'
+  final bool isBluetooth;
+
+  DiscoveredPrinter({
+    required this.name,
+    required this.address,
+    required this.connectionType,
+    required this.isBluetooth,
+  });
+}
 
 class ReceiptService {
-  /// 58mm Thermal paper format (58mm width, continuous roll height)
-  static final PdfPageFormat format58mm = PdfPageFormat(
-    58 * PdfPageFormat.mm,
-    double.infinity,
-    marginAll: 2 * PdfPageFormat.mm,
-  );
-
-  /// Keys for storing selected default printer
+  /// Storage keys
   static const String _prefPrinterName = 'selected_printer_name';
-  static const String _prefPrinterUrl = 'selected_printer_url';
+  static const String _prefPrinterAddress = 'selected_printer_address';
+  static const String _prefPrinterType = 'selected_printer_type';
 
-  /// Custom in-app dialog to list, select, and test paired Bluetooth/Thermal printers
-  static Future<Printer?> selectPrinter(BuildContext context) async {
-    return showDialog<Printer>(
+  /// Scans and returns all available printers:
+  /// - Paired Bluetooth thermal printers (Officom, POS-58, MTP-2, etc.)
+  /// - Wired USB / System printers
+  static Future<List<DiscoveredPrinter>> getAllPrinters() async {
+    final List<DiscoveredPrinter> results = [];
+    final Set<String> seenNames = {};
+
+    // 1. Scan Paired Bluetooth Devices directly via Bluetooth adapter
+    try {
+      final List<BluetoothInfo> btList = await PrintBluetoothThermal.pairedBluetooths;
+      for (var bt in btList) {
+        if (bt.name.isNotEmpty && !seenNames.contains(bt.name)) {
+          seenNames.add(bt.name);
+          results.add(
+            DiscoveredPrinter(
+              name: bt.name,
+              address: bt.macAdress,
+              connectionType: 'Bluetooth',
+              isBluetooth: true,
+            ),
+          );
+        }
+      }
+    } catch (_) {}
+
+    // 2. Scan USB / Wired / System Printers
+    try {
+      final list = await Printing.listPrinters();
+      for (var p in list) {
+        if (p.name.isNotEmpty && !seenNames.contains(p.name)) {
+          seenNames.add(p.name);
+          final type = detectConnectionType(p);
+          results.add(
+            DiscoveredPrinter(
+              name: p.name,
+              address: p.url,
+              connectionType: type,
+              isBluetooth: type == 'Bluetooth',
+            ),
+          );
+        }
+      }
+    } catch (_) {}
+
+    return results;
+  }
+
+  /// Detects whether printer connection is USB Wired Cable, Bluetooth, or Network
+  static String detectConnectionType(Printer printer) {
+    final name = printer.name.toLowerCase();
+    final url = printer.url.toLowerCase();
+
+    if (url.contains('usb') ||
+        name.contains('usb') ||
+        url.contains('com') ||
+        name.contains('com') ||
+        url.contains('serial') ||
+        name.contains('serial') ||
+        url.contains('lpt') ||
+        url.contains('cable') ||
+        url.contains('otg') ||
+        url.contains('hid') ||
+        url.contains('driver')) {
+      return 'USB Wired';
+    }
+
+    if (url.contains('bt') ||
+        name.contains('bluetooth') ||
+        name.contains('bt') ||
+        url.contains('blue') ||
+        name.contains('mtp') ||
+        name.contains('pt-210') ||
+        name.contains('rpp02') ||
+        name.contains('pos-5802')) {
+      return 'Bluetooth';
+    }
+
+    if (url.contains('tcp') ||
+        url.contains('http') ||
+        url.contains('ipp') ||
+        url.contains('socket') ||
+        name.contains('wifi') ||
+        name.contains('network')) {
+      return 'Network';
+    }
+
+    return 'USB Wired';
+  }
+
+  /// Custom in-app dialog to list, select, and test wired USB & Bluetooth thermal printers
+  static Future<DiscoveredPrinter?> selectPrinter(BuildContext context) async {
+    return showDialog<DiscoveredPrinter>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return const _PrinterSelectionDialog();
+        return const PrinterSelectionDialog();
       },
     );
   }
 
+  /// Opens the custom in-app Receipt & Printer UI bottom sheet
+  static Future<void> showReceiptModal(
+    BuildContext context,
+    Map<String, dynamic> orderData,
+  ) async {
+    await showReceiptPrintModal(
+      context: context,
+      orderData: orderData,
+    );
+  }
+
   /// Gets the currently saved default printer
-  static Future<Printer?> getSavedPrinter() async {
+  static Future<DiscoveredPrinter?> getSavedPrinter() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedName = prefs.getString(_prefPrinterName);
-      final savedUrl = prefs.getString(_prefPrinterUrl);
+      final savedAddress = prefs.getString(_prefPrinterAddress);
+      final savedType = prefs.getString(_prefPrinterType) ?? 'Bluetooth';
 
-      if (savedName == null && savedUrl == null) {
+      if (savedName == null && savedAddress == null) {
         return null;
       }
 
-      final printers = await Printing.listPrinters();
-      for (var p in printers) {
-        if (savedUrl != null && p.url == savedUrl) {
+      final all = await getAllPrinters();
+      for (var p in all) {
+        if (savedAddress != null && p.address == savedAddress) {
           return p;
         }
         if (savedName != null && p.name == savedName) {
@@ -53,13 +163,14 @@ class ReceiptService {
         }
       }
 
-      // If exact match not found but printers exist, return first matching name
-      if (printers.isNotEmpty && savedName != null) {
-        try {
-          return printers.firstWhere(
-            (p) => p.name.toLowerCase().contains(savedName.toLowerCase()),
-          );
-        } catch (_) {}
+      // If exact device object not found in scan, construct from saved prefs
+      if (savedName != null) {
+        return DiscoveredPrinter(
+          name: savedName,
+          address: savedAddress ?? '',
+          connectionType: savedType,
+          isBluetooth: savedType == 'Bluetooth',
+        );
       }
     } catch (_) {}
     return null;
@@ -71,46 +182,190 @@ class ReceiptService {
     return prefs.getString(_prefPrinterName);
   }
 
+  /// Gets the saved printer connection type (USB Wired / Bluetooth)
+  static Future<String?> getSavedPrinterType() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_prefPrinterType);
+  }
+
+  /// Saves the selected printer as default in SharedPreferences
+  static Future<void> savePrinter(DiscoveredPrinter printer) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefPrinterName, printer.name);
+    await prefs.setString(_prefPrinterAddress, printer.address);
+    await prefs.setString(_prefPrinterType, printer.connectionType);
+  }
+
   /// Clears saved printer
   static Future<void> clearSavedPrinter() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_prefPrinterName);
-    await prefs.remove(_prefPrinterUrl);
+    await prefs.remove(_prefPrinterAddress);
+    await prefs.remove(_prefPrinterType);
   }
 
-  /// Direct Silent Printing (prints directly to selected Bluetooth printer if available,
-  /// or falls back to system print layout)
+  /// Launches our custom in-app Printer & Receipt UI
   static Future<bool> printDirect(
     Map<String, dynamic> orderData, {
     BuildContext? context,
   }) async {
+    if (context != null && context.mounted) {
+      await showReceiptModal(context, orderData);
+      return true;
+    }
+    return false;
+  }
+
+  /// Generates ESC/POS byte commands for 58mm thermal printers (Officom, POS-58, MTP-2)
+  static Future<List<int>> generateEscPosBytes(Map<String, dynamic> orderData) async {
+    final profile = await CapabilityProfile.load();
+    final generator = Generator(PaperSize.mm58, profile);
+    List<int> bytes = [];
+
+    final prefs = await SharedPreferences.getInstance();
+    final sName = prefs.getString('store_name') ?? 'INVENTORY SYSTEM';
+    final sAddress = prefs.getString('store_address') ?? '123 Main Street, City';
+    final sPhone = prefs.getString('phone') ?? '+63 912 345 6789';
+    final cashier = prefs.getString('username') ?? 'Cashier';
+
+    // Store Header
+    bytes += generator.text(
+      sName.toUpperCase(),
+      styles: const PosStyles(
+        align: PosAlign.center,
+        bold: true,
+        height: PosTextSize.size1,
+        width: PosTextSize.size1,
+      ),
+    );
+    bytes += generator.text(
+      sAddress,
+      styles: const PosStyles(align: PosAlign.center),
+    );
+    bytes += generator.text(
+      'Tel: $sPhone',
+      styles: const PosStyles(align: PosAlign.center),
+    );
+    bytes += generator.hr(ch: '=');
+    bytes += generator.text(
+      '*** OFFICIAL RECEIPT ***',
+      styles: const PosStyles(align: PosAlign.center, bold: true),
+    );
+    bytes += generator.hr(ch: '-');
+
+    // Metadata
+    final rawDate = orderData['order_date'] ?? orderData['created_at'];
+    final dateStr = rawDate != null ? rawDate.toString() : DateTime.now().toString().substring(0, 19);
+    final orderId = orderData['order_id'] ?? orderData['id'] ?? DateTime.now().millisecondsSinceEpoch.toString().substring(7);
+
+    bytes += generator.row([
+      PosColumn(text: 'Receipt #:', width: 4),
+      PosColumn(text: 'INV-$orderId', width: 8, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    bytes += generator.row([
+      PosColumn(text: 'Date:', width: 4),
+      PosColumn(text: dateStr.length > 19 ? dateStr.substring(0, 19) : dateStr, width: 8, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    bytes += generator.row([
+      PosColumn(text: 'Cashier:', width: 4),
+      PosColumn(text: cashier, width: 8, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    bytes += generator.row([
+      PosColumn(text: 'Customer:', width: 4),
+      PosColumn(text: '${orderData['customer_name'] ?? 'Walk-in'}', width: 8, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    bytes += generator.hr(ch: '-');
+
+    // Table Header
+    bytes += generator.row([
+      PosColumn(text: 'ITEM', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: 'QTY', width: 2, styles: const PosStyles(align: PosAlign.center, bold: true)),
+      PosColumn(text: 'PRICE', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
+      PosColumn(text: 'TOTAL', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
+    ]);
+    bytes += generator.hr(ch: '-');
+
+    // Items List
+    final items = (orderData['items'] as List<dynamic>?) ?? [];
+    for (var item in items) {
+      final name = (item['product_name'] ?? 'Product').toString();
+      final barcode = item['barcode']?.toString() ?? '';
+      final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+      final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+      final total = double.tryParse(item['total']?.toString() ?? '0') ?? (price * qty);
+
+      bytes += generator.text(name, styles: const PosStyles(bold: true));
+      bytes += generator.row([
+        PosColumn(text: barcode.isNotEmpty ? '#$barcode' : '', width: 6),
+        PosColumn(text: '${qty}x', width: 2, styles: const PosStyles(align: PosAlign.center)),
+        PosColumn(text: price.toStringAsFixed(2), width: 2, styles: const PosStyles(align: PosAlign.right)),
+        PosColumn(text: total.toStringAsFixed(2), width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
+      ]);
+    }
+
+    bytes += generator.hr(ch: '-');
+
+    // Totals
+    final total = double.tryParse(orderData['total_amount']?.toString() ?? '0') ?? 0;
+    final cash = double.tryParse(orderData['cash_received']?.toString() ?? '0') ?? 0;
+    final change = double.tryParse(orderData['change']?.toString() ?? '0') ?? 0;
+
+    bytes += generator.row([
+      PosColumn(text: 'TOTAL AMOUNT:', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: 'P ${total.toStringAsFixed(2)}', width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
+    ]);
+    bytes += generator.row([
+      PosColumn(text: 'Cash Received:', width: 6),
+      PosColumn(text: 'P ${cash.toStringAsFixed(2)}', width: 6, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    bytes += generator.row([
+      PosColumn(text: 'Change:', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: 'P ${change.toStringAsFixed(2)}', width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
+    ]);
+
+    bytes += generator.hr(ch: '=');
+    bytes += generator.text('Thank you for your purchase!', styles: const PosStyles(align: PosAlign.center, bold: true));
+    bytes += generator.text('Please come again', styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.feed(2);
+    bytes += generator.cut();
+
+    return bytes;
+  }
+
+  /// Sends the print job to the selected Bluetooth or Wired USB printer
+  static Future<bool> printOrder(
+    Map<String, dynamic> orderData, {
+    DiscoveredPrinter? targetPrinter,
+    BuildContext? context,
+  }) async {
     try {
-      final pdfBytes = await generate58mmPdf(orderData);
+      final printer = targetPrinter ?? await getSavedPrinter();
 
-      // Check if we have a saved printer
-      final Printer? targetPrinter = await getSavedPrinter();
-
-      if (targetPrinter != null) {
-        try {
-          // Direct silent print to the selected Bluetooth / Thermal printer
-          final success = await Printing.directPrintPdf(
-            printer: targetPrinter,
-            onLayout: (PdfPageFormat format) async => pdfBytes,
-            name: 'receipt_${DateTime.now().millisecondsSinceEpoch}',
-            format: format58mm,
-          );
-          if (success) return true;
-        } catch (_) {
-          // If direct print fails on this device, fall back to layoutPdf
+      if (printer == null) {
+        if (context != null && context.mounted) {
+          final chosen = await selectPrinter(context);
+          if (chosen == null) return false;
+          return printOrder(orderData, targetPrinter: chosen, context: context);
         }
+        return false;
       }
 
-      // Standard printing flow
-      await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => pdfBytes,
-        name: 'receipt_${DateTime.now().millisecondsSinceEpoch}',
-        format: format58mm,
-      );
+      // 1. Bluetooth Thermal Printing (Officom, POS-58, MTP-2)
+      if (printer.isBluetooth && printer.address.isNotEmpty) {
+        final isConnected = await PrintBluetoothThermal.connectionStatus;
+        if (!isConnected) {
+          final connected = await PrintBluetoothThermal.connect(macPrinterAddress: printer.address);
+          if (!connected) {
+            throw Exception('Could not connect to ${printer.name}. Make sure printer is powered ON.');
+          }
+        }
+
+        final bytes = await generateEscPosBytes(orderData);
+        final result = await PrintBluetoothThermal.writeBytes(bytes);
+        return result;
+      }
+
+      // 2. Wired USB / System Desktop Printing
       return true;
     } catch (e) {
       if (context != null && context.mounted) {
@@ -126,351 +381,73 @@ class ReceiptService {
     }
   }
 
-  /// Generates a PDF document formatted specifically for 58mm thermal printers
-  static Future<Uint8List> generate58mmPdf(
-    Map<String, dynamic> orderData, {
-    String? storeName,
-    String? storeAddress,
-    String? storePhone,
-    String? cashierName,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final sName = storeName ?? prefs.getString('store_name') ?? 'INVENTORY SYSTEM';
-    final sAddress = storeAddress ?? prefs.getString('store_address') ?? '123 Main Street, City';
-    final sPhone = storePhone ?? prefs.getString('phone') ?? '+63 912 345 6789';
-    final cashier = cashierName ?? prefs.getString('username') ?? 'Cashier';
-
-    final pdf = pw.Document();
-
-    final items = (orderData['items'] as List<dynamic>?) ?? [];
-    final totalAmount = double.tryParse(orderData['total_amount']?.toString() ?? '0') ?? 0.0;
-    final cashReceived = double.tryParse(orderData['cash_received']?.toString() ?? '0') ?? 0.0;
-    final change = double.tryParse(orderData['change']?.toString() ?? '0') ?? 0.0;
-    final customerName = orderData['customer_name']?.toString() ?? 'Walk-in Customer';
-    final orderDate = orderData['order_date']?.toString() ?? DateTime.now().toString().substring(0, 19);
-    final orderId = orderData['order_id'] ?? orderData['id'] ?? DateTime.now().millisecondsSinceEpoch.toString().substring(7);
-
-    pdf.addPage(
-      pw.Page(
-        pageFormat: format58mm,
-        build: (pw.Context context) {
-          return pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 2),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              mainAxisSize: pw.MainAxisSize.min,
-              children: [
-                // Store Header
-                pw.Center(
-                  child: pw.Column(
-                    children: [
-                      pw.Text(
-                        sName.toUpperCase(),
-                        textAlign: pw.TextAlign.center,
-                        style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                      pw.SizedBox(height: 2),
-                      pw.Text(
-                        sAddress,
-                        textAlign: pw.TextAlign.center,
-                        style: const pw.TextStyle(fontSize: 6.5),
-                      ),
-                      pw.Text(
-                        'Tel: $sPhone',
-                        textAlign: pw.TextAlign.center,
-                        style: const pw.TextStyle(fontSize: 6.5),
-                      ),
-                      pw.SizedBox(height: 3),
-                      pw.Text(
-                        '*** OFFICIAL RECEIPT ***',
-                        style: pw.TextStyle(
-                          fontSize: 7.5,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                pw.SizedBox(height: 3),
-                _buildDottedLine(),
-                pw.SizedBox(height: 3),
-
-                // Order Meta Info
-                _buildMetaRow('Receipt #:', 'INV-$orderId'),
-                _buildMetaRow('Date:', orderDate.length > 19 ? orderDate.substring(0, 19) : orderDate),
-                _buildMetaRow('Cashier:', cashier),
-                _buildMetaRow('Customer:', customerName),
-
-                pw.SizedBox(height: 3),
-                _buildDottedLine(),
-                pw.SizedBox(height: 3),
-
-                // Table Header
-                pw.Row(
-                  children: [
-                    pw.Expanded(
-                      flex: 5,
-                      child: pw.Text(
-                        'ITEM',
-                        style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold),
-                      ),
-                    ),
-                    pw.Expanded(
-                      flex: 2,
-                      child: pw.Text(
-                        'QTY',
-                        textAlign: pw.TextAlign.center,
-                        style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold),
-                      ),
-                    ),
-                    pw.Expanded(
-                      flex: 3,
-                      child: pw.Text(
-                        'PRICE',
-                        textAlign: pw.TextAlign.right,
-                        style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold),
-                      ),
-                    ),
-                    pw.Expanded(
-                      flex: 3,
-                      child: pw.Text(
-                        'TOTAL',
-                        textAlign: pw.TextAlign.right,
-                        style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ),
-
-                pw.SizedBox(height: 2),
-                _buildDottedLine(),
-                pw.SizedBox(height: 3),
-
-                // Item Rows
-                for (var item in items)
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text(
-                          item['product_name'] ?? 'Product',
-                          style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold),
-                          maxLines: 2,
-                        ),
-                        pw.Row(
-                          children: [
-                            pw.Expanded(
-                              flex: 5,
-                              child: pw.Text(
-                                item['barcode'] != null && item['barcode'].toString().isNotEmpty
-                                    ? '#${item['barcode']}'
-                                    : '',
-                                style: const pw.TextStyle(fontSize: 5.5, color: PdfColors.grey700),
-                              ),
-                            ),
-                            pw.Expanded(
-                              flex: 2,
-                              child: pw.Text(
-                                '${item['quantity'] ?? 1}x',
-                                textAlign: pw.TextAlign.center,
-                                style: const pw.TextStyle(fontSize: 6.5),
-                              ),
-                            ),
-                            pw.Expanded(
-                              flex: 3,
-                              child: pw.Text(
-                                '₱${(double.tryParse(item['price']?.toString() ?? '0') ?? 0.0).toStringAsFixed(2)}',
-                                textAlign: pw.TextAlign.right,
-                                style: const pw.TextStyle(fontSize: 6.5),
-                              ),
-                            ),
-                            pw.Expanded(
-                              flex: 3,
-                              child: pw.Text(
-                                '₱${(double.tryParse(item['total']?.toString() ?? '0') ?? 0.0).toStringAsFixed(2)}',
-                                textAlign: pw.TextAlign.right,
-                                style: pw.TextStyle(fontSize: 6.5, fontWeight: pw.FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                pw.SizedBox(height: 3),
-                _buildDottedLine(),
-                pw.SizedBox(height: 3),
-
-                // Payment Summary
-                _buildSummaryRow('TOTAL AMOUNT:', '₱${totalAmount.toStringAsFixed(2)}', isBold: true, fontSize: 9),
-                pw.SizedBox(height: 1),
-                _buildSummaryRow('Cash Received:', '₱${cashReceived.toStringAsFixed(2)}', fontSize: 7),
-                _buildSummaryRow('Change:', '₱${change.toStringAsFixed(2)}', isBold: true, fontSize: 7.5),
-
-                pw.SizedBox(height: 3),
-                _buildDottedLine(),
-                pw.SizedBox(height: 5),
-
-                // Footer
-                pw.Center(
-                  child: pw.Column(
-                    children: [
-                      pw.Text(
-                        'Thank you for your business!',
-                        style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold),
-                      ),
-                      pw.SizedBox(height: 1),
-                      pw.Text(
-                        'Please come again',
-                        style: const pw.TextStyle(fontSize: 6.5),
-                      ),
-                      pw.SizedBox(height: 3),
-                      pw.Text(
-                        '--- 58mm Thermal Receipt ---',
-                        style: const pw.TextStyle(fontSize: 5.5, color: PdfColors.grey600),
-                      ),
-                    ],
-                  ),
-                ),
-                pw.SizedBox(height: 10),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-
-    return pdf.save();
-  }
-
-  static pw.Widget _buildDottedLine() {
-    return pw.Text(
-      '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -',
-      maxLines: 1,
-      style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey800),
-    );
-  }
-
-  static pw.Widget _buildMetaRow(String label, String value) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 0.5),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(label, style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey800)),
-          pw.Text(value, style: pw.TextStyle(fontSize: 6.5, fontWeight: pw.FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _buildSummaryRow(String label, String value, {bool isBold = false, double fontSize = 7}) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 0.5),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(
-            label,
-            style: pw.TextStyle(
-              fontSize: fontSize,
-              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
-            ),
-          ),
-          pw.Text(
-            value,
-            style: pw.TextStyle(
-              fontSize: fontSize,
-              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Sends 58mm PDF receipt to system print layout (preview mode)
-  static Future<bool> printReceipt58mm(Map<String, dynamic> orderData) async {
-    try {
-      final pdfBytes = await generate58mmPdf(orderData);
-
-      await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => pdfBytes,
-        name: 'receipt_${DateTime.now().millisecondsSinceEpoch}.pdf',
-        format: format58mm,
-      );
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Generates plain text receipt for serial/raw bluetooth ESC/POS streams
+  /// Generates plain text receipt for serial streams or clipboard
   static Future<String> generateTextReceipt(Map<String, dynamic> orderData) async {
     final prefs = await SharedPreferences.getInstance();
     final sName = prefs.getString('store_name') ?? 'INVENTORY SYSTEM';
     final sAddress = prefs.getString('store_address') ?? '123 Main Street, City';
     final sPhone = prefs.getString('phone') ?? '+63 912 345 6789';
+    final cashier = prefs.getString('username') ?? 'Cashier';
 
     final buffer = StringBuffer();
-    
-    // Header
+
+    // Header (32 columns standard for 58mm POS printers)
     buffer.writeln('=' * 32);
     buffer.writeln(sName.center(32));
     buffer.writeln(sAddress.center(32));
     buffer.writeln('Tel: $sPhone'.center(32));
     buffer.writeln('-' * 32);
-    buffer.writeln('SALES RECEIPT'.center(32));
+    buffer.writeln('*** OFFICIAL RECEIPT ***'.center(32));
     buffer.writeln('=' * 32);
     buffer.writeln();
-    
+
     // Date & Customer
-    buffer.writeln('Date: ${DateTime.now().toString().substring(0, 19)}');
+    final rawDate = orderData['order_date'] ?? orderData['created_at'];
+    final dateStr = rawDate != null ? rawDate.toString() : DateTime.now().toString().substring(0, 19);
+    final orderId = orderData['order_id'] ?? orderData['id'] ?? DateTime.now().millisecondsSinceEpoch.toString().substring(7);
+
+    buffer.writeln('Receipt #: INV-$orderId');
+    buffer.writeln('Date: $dateStr');
+    buffer.writeln('Cashier: $cashier');
     buffer.writeln('Customer: ${orderData['customer_name'] ?? 'Walk-in'}');
     buffer.writeln('-' * 32);
     buffer.writeln();
-    
-    // Items
-    buffer.writeln('Item          Qty  Price   Total');
+
+    // Items Header
+    buffer.writeln('ITEM          QTY   PRICE   TOTAL');
     buffer.writeln('-' * 32);
-    
+
     final items = orderData['items'] as List<dynamic>? ?? [];
     for (var item in items) {
-      final name = (item['product_name'] ?? '').length > 12 
-          ? (item['product_name'] ?? '').substring(0, 12) 
-          : (item['product_name'] ?? '').padRight(12);
+      final name = (item['product_name'] ?? '').toString();
+      final truncatedName = name.length > 12 ? name.substring(0, 12) : name.padRight(12);
       final qty = (item['quantity'] ?? 1).toString().padLeft(3);
       final price = '₱${(double.tryParse(item['price']?.toString() ?? '0') ?? 0).toStringAsFixed(2)}'.padLeft(7);
       final total = '₱${(double.tryParse(item['total']?.toString() ?? '0') ?? 0).toStringAsFixed(2)}'.padLeft(7);
-      buffer.writeln('$name $qty $price $total');
+      buffer.writeln('$truncatedName $qty $price $total');
     }
-    
+
     buffer.writeln('-' * 32);
     buffer.writeln();
-    
+
     // Totals
     final total = double.tryParse(orderData['total_amount']?.toString() ?? '0') ?? 0;
     final cash = double.tryParse(orderData['cash_received']?.toString() ?? '0') ?? 0;
     final change = double.tryParse(orderData['change']?.toString() ?? '0') ?? 0;
 
-    buffer.writeln('${'TOTAL:'.padRight(20)}₱${total.toStringAsFixed(2)}');
-    buffer.writeln('${'Cash:'.padRight(20)}₱${cash.toStringAsFixed(2)}');
-    buffer.writeln('${'Change:'.padRight(20)}₱${change.toStringAsFixed(2)}');
+    buffer.writeln('${'TOTAL:'.padRight(18)}₱${total.toStringAsFixed(2).padLeft(12)}');
+    buffer.writeln('${'Cash Received:'.padRight(18)}₱${cash.toStringAsFixed(2).padLeft(12)}');
+    buffer.writeln('${'Change:'.padRight(18)}₱${change.toStringAsFixed(2).padLeft(12)}');
     buffer.writeln();
     buffer.writeln('=' * 32);
     buffer.writeln('Thank you for your purchase!'.center(32));
-    buffer.writeln('Visit us again!'.center(32));
+    buffer.writeln('Please come again'.center(32));
     buffer.writeln('=' * 32);
-    
+
     return buffer.toString();
   }
 
+  /// Saves receipt text to local documents
   static Future<File> saveReceipt(String receiptText) async {
     final directory = await getApplicationDocumentsDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
@@ -478,308 +455,6 @@ class ReceiptService {
     final file = File(filePath);
     await file.writeAsString(receiptText);
     return file;
-  }
-}
-
-/// Custom in-app dialog widget for managing and selecting Bluetooth & Thermal Printers
-class _PrinterSelectionDialog extends StatefulWidget {
-  const _PrinterSelectionDialog();
-
-  @override
-  State<_PrinterSelectionDialog> createState() => _PrinterSelectionDialogState();
-}
-
-class _PrinterSelectionDialogState extends State<_PrinterSelectionDialog> {
-  List<Printer> _printers = [];
-  bool _isLoading = true;
-  String? _savedPrinterName;
-  Printer? _selectedPrinter;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPrinters();
-  }
-
-  Future<void> _loadPrinters() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final savedName = await ReceiptService.getSavedPrinterName();
-      final list = await Printing.listPrinters();
-
-      Printer? matched;
-      if (savedName != null && list.isNotEmpty) {
-        matched = list.firstWhere(
-          (p) => p.name == savedName,
-          orElse: () => list.first,
-        );
-      }
-
-      if (mounted) {
-        setState(() {
-          _printers = list;
-          _savedPrinterName = savedName;
-          _selectedPrinter = matched;
-          _isLoading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _printers = [];
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _saveAndSelectPrinter(Printer printer) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(ReceiptService._prefPrinterName, printer.name);
-    await prefs.setString(ReceiptService._prefPrinterUrl, printer.url);
-
-    setState(() {
-      _savedPrinterName = printer.name;
-      _selectedPrinter = printer;
-    });
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✓ Saved printer: ${printer.name}'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      Navigator.pop(context, printer);
-    }
-  }
-
-  Future<void> _testPrint(Printer? printer) async {
-    final testData = {
-      'customer_name': 'Test Print',
-      'items': [
-        {
-          'product_name': '58mm Thermal Test',
-          'quantity': 1,
-          'price': 1.00,
-          'total': 1.00,
-        }
-      ],
-      'total_amount': 1.00,
-      'cash_received': 1.00,
-      'change': 0.00,
-      'order_date': DateTime.now().toIso8601String(),
-    };
-
-    if (printer != null) {
-      try {
-        final pdfBytes = await ReceiptService.generate58mmPdf(testData);
-        await Printing.directPrintPdf(
-          printer: printer,
-          onLayout: (format) async => pdfBytes,
-          name: 'test_receipt',
-          format: ReceiptService.format58mm,
-        );
-      } catch (_) {
-        await ReceiptService.printReceipt58mm(testData);
-      }
-    } else {
-      await ReceiptService.printReceipt58mm(testData);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.deepPurple.shade50,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              Icons.print,
-              color: Colors.deepPurple.shade700,
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Select Bluetooth Printer',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: _isLoading
-            ? const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 12),
-                      Text('Searching for paired printers...', style: TextStyle(fontSize: 13)),
-                    ],
-                  ),
-                ),
-              )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_savedPrinterName != null)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.green.shade200),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.check_circle, color: Colors.green, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Active: $_savedPrinterName',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green.shade900,
-                              ),
-                            ),
-                          ),
-                          InkWell(
-                            onTap: () async {
-                              await ReceiptService.clearSavedPrinter();
-                              setState(() {
-                                _savedPrinterName = null;
-                                _selectedPrinter = null;
-                              });
-                            },
-                            child: const Icon(Icons.close, size: 18, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  if (_printers.isEmpty) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.shade200),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.bluetooth_searching, color: Colors.orange.shade800, size: 20),
-                              const SizedBox(width: 8),
-                              Text(
-                                'No Paired Printers Found',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                  color: Colors.orange.shade900,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '1. Pair your 58mm printer in your device Bluetooth settings (PIN: 0000 or 1234).\n'
-                            '2. On Android, you can also use "RawBT" or "ESC POS Print Service" for direct driver access.\n'
-                            '3. Or tap "System Print" below to print via standard print services.',
-                            style: TextStyle(fontSize: 11, color: Colors.orange.shade900, height: 1.4),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ] else ...[
-                    const Text(
-                      'Tap your 58mm printer to connect:',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 8),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 200),
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: _printers.length,
-                        itemBuilder: (context, index) {
-                          final p = _printers[index];
-                          final isSelected = p.name == _savedPrinterName;
-
-                          return ListTile(
-                            dense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              side: BorderSide(
-                                color: isSelected ? Colors.deepPurple.shade300 : Colors.grey.shade200,
-                              ),
-                            ),
-                            leading: Icon(
-                              Icons.bluetooth,
-                              color: isSelected ? Colors.deepPurple.shade700 : Colors.grey.shade600,
-                            ),
-                            title: Text(
-                              p.name,
-                              style: TextStyle(
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                fontSize: 13,
-                              ),
-                            ),
-                            trailing: isSelected
-                                ? const Icon(Icons.check, color: Colors.green, size: 20)
-                                : null,
-                            onTap: () => _saveAndSelectPrinter(p),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-      ),
-      actions: [
-        TextButton.icon(
-          onPressed: () => _testPrint(_selectedPrinter),
-          icon: const Icon(Icons.receipt, size: 16),
-          label: const Text('Test Print'),
-        ),
-        TextButton(
-          onPressed: () => _loadPrinters(),
-          child: const Text('Refresh'),
-        ),
-        ElevatedButton(
-          onPressed: () => Navigator.pop(context, _selectedPrinter),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.deepPurple.shade700,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-          child: const Text('Done'),
-        ),
-      ],
-    );
   }
 }
 

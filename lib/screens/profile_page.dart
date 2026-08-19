@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../authentication/login.dart';
 import '../services/auth_service.dart';
 import '../services/stats_service.dart';
+import '../services/receipt_service.dart';
+
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -515,9 +517,79 @@ class _ProfilePageState extends State<ProfilePage> {
                       _buildInfoItem(Icons.phone, 'Phone Number', _phoneNumber),
                       const SizedBox(height: 12),
                       _buildInfoItem(Icons.verified, 'Role', _role),
+                      const SizedBox(height: 12),
+                      InkWell(
+                        onTap: () async {
+                          await ReceiptService.selectPrinter(context);
+                          setState(() {});
+                        },
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: Colors.deepPurple.shade200,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.deepPurple.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.print,
+                                  color: Colors.deepPurple.shade700,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Thermal / Bluetooth Printer',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    FutureBuilder<String?>(
+                                      future: ReceiptService.getSavedPrinterName(),
+                                      builder: (context, snapshot) {
+                                        final name = snapshot.data;
+                                        return Text(
+                                          name ?? 'Tap to select 58mm printer',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: name != null ? Colors.black87 : Colors.deepPurple.shade700,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                Icons.chevron_right,
+                                color: Colors.grey.shade400,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
 
                     const SizedBox(height: 24),
+
 
                     // Live Stats Section from Database
                     if (!_isEditing) ...[
