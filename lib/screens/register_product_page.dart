@@ -132,12 +132,29 @@ class _RegisterProductPageState extends State<RegisterProductPage> {
     }
   }
 
+  bool isTorchOn = false;
+  double currentZoom = 1.0;
+
   void startBarcodeScan() {
     setState(() {
       isScanning = true;
+      isTorchOn = false;
+      currentZoom = 1.0;
       scannerController = MobileScannerController(
-        formats: [BarcodeFormat.all],
-        detectionSpeed: DetectionSpeed.noDuplicates,
+        formats: const [
+          BarcodeFormat.ean13,
+          BarcodeFormat.ean8,
+          BarcodeFormat.upcA,
+          BarcodeFormat.upcE,
+          BarcodeFormat.code128,
+          BarcodeFormat.code39,
+          BarcodeFormat.code93,
+          BarcodeFormat.itf,
+          BarcodeFormat.qrCode,
+          BarcodeFormat.dataMatrix,
+        ],
+        detectionSpeed: DetectionSpeed.normal,
+        autoStart: true,
       );
     });
   }
@@ -145,23 +162,46 @@ class _RegisterProductPageState extends State<RegisterProductPage> {
   void stopBarcodeScan() {
     setState(() {
       isScanning = false;
+      isTorchOn = false;
       scannerController?.dispose();
       scannerController = null;
     });
   }
 
+  void _toggleTorch() {
+    if (scannerController == null) return;
+    scannerController!.toggleTorch();
+    setState(() {
+      isTorchOn = !isTorchOn;
+    });
+  }
+
+  void _toggleZoom() {
+    if (scannerController == null) return;
+    final nextZoom = currentZoom == 1.0 ? 2.0 : 1.0;
+    scannerController!.setZoomScale(nextZoom);
+    setState(() {
+      currentZoom = nextZoom;
+    });
+  }
+
   void onBarcodeDetected(BarcodeCapture capture) {
-    final barcode = capture.barcodes.first;
-    if (barcode.rawValue != null && mounted) {
-      barcodeController.text = barcode.rawValue!;
+    if (capture.barcodes.isEmpty) return;
+    final raw = capture.barcodes.first.rawValue?.trim();
+    
+    // Ignore invalid/empty reads
+    if (raw == null || raw.isEmpty || raw.length < 3) return;
+
+    if (mounted) {
+      barcodeController.text = raw;
       stopBarcodeScan();
       FocusScope.of(context).requestFocus(nameFocus);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Barcode scanned successfully!'),
+        SnackBar(
+          content: Text('✓ Barcode scanned: $raw'),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 1),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -169,6 +209,15 @@ class _RegisterProductPageState extends State<RegisterProductPage> {
 
   Widget buildBarcodeSection() {
     if (isScanning) {
+      final screenWidth = MediaQuery.of(context).size.width;
+      const double scanAreaWidth = 260;
+      const double scanAreaHeight = 160;
+      final scanWindow = Rect.fromCenter(
+        center: Offset(screenWidth / 2, 150),
+        width: scanAreaWidth,
+        height: scanAreaHeight,
+      );
+
       return Container(
         height: 300,
         decoration: BoxDecoration(
@@ -186,38 +235,96 @@ class _RegisterProductPageState extends State<RegisterProductPage> {
           children: [
             MobileScanner(
               controller: scannerController!,
+              scanWindow: scanWindow,
               onDetect: onBarcodeDetected,
             ),
             // Scanner overlay with corner markers
             CustomPaint(
               painter: RegisterScannerOverlayPainter(),
-              size: Size(MediaQuery.of(context).size.width, 300),
+              size: Size(screenWidth, 300),
             ),
+            // Top controls: Flash, Zoom, Close
             Positioned(
-              top: 16,
-              right: 16,
-              child: IconButton(
-                onPressed: stopBarcodeScan,
-                icon: const Icon(
-                  Icons.close,
-                  color: Colors.white,
-                  size: 30,
-                ),
+              top: 12,
+              left: 12,
+              right: 12,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      // Torch toggle
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: IconButton(
+                          onPressed: _toggleTorch,
+                          icon: Icon(
+                            isTorchOn ? Icons.flash_on : Icons.flash_off,
+                            color: isTorchOn ? Colors.yellow : Colors.white,
+                            size: 20,
+                          ),
+                          tooltip: 'Toggle Flash',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Zoom toggle
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: TextButton(
+                          onPressed: _toggleZoom,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            minimumSize: Size.zero,
+                          ),
+                          child: Text(
+                            '${currentZoom.toStringAsFixed(0)}x',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: IconButton(
+                      onPressed: stopBarcodeScan,
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                      tooltip: 'Close Camera',
+                    ),
+                  ),
+                ],
               ),
             ),
             Positioned(
-              bottom: 20,
+              bottom: 14,
               left: 0,
               right: 0,
               child: const Center(
                 child: Text(
-                  'Align barcode within the frame',
+                  'Center barcode inside the frame',
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: Colors.white,
                     fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                     shadows: [
-                      Shadow(blurRadius: 10, color: Colors.black54),
+                      Shadow(blurRadius: 10, color: Colors.black),
                     ],
                   ),
                 ),

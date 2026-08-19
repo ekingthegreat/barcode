@@ -4,7 +4,10 @@ import 'screens/register_product_page.dart';
 import 'screens/scan_product_page.dart';
 import 'screens/products_page.dart';
 import 'screens/transactions_page.dart';
-import 'screens/profile_page.dart'; // Add this import
+import 'screens/profile_page.dart';
+import 'authentication/login.dart';
+import 'authentication/register.dart';
+import 'services/auth_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -17,14 +20,63 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Inventory Management',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.deepPurple,
         ),
         useMaterial3: true,
       ),
-      home: const MyHomePage(),
+      home: const AuthWrapper(),
+      routes: {
+        '/login': (context) => const LoginPage(),
+        '/register': (context) => const RegisterPage(),
+        '/home': (context) => const MyHomePage(),
+      },
     );
+  }
+}
+
+class AuthWrapper extends StatefulWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  bool _checkingAuth = true;
+  bool _isLoggedIn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    final loggedIn = await AuthService.isLoggedIn();
+    if (mounted) {
+      setState(() {
+        _isLoggedIn = loggedIn;
+        _checkingAuth = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_checkingAuth) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: CircularProgressIndicator(
+            color: Colors.deepPurple,
+          ),
+        ),
+      );
+    }
+    return _isLoggedIn ? const MyHomePage() : const LoginPage();
   }
 }
 

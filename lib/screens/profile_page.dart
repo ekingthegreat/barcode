@@ -1,6 +1,8 @@
 // lib/screens/profile_page.dart
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../authentication/login.dart';
+import '../services/auth_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -137,16 +139,23 @@ class _ProfilePageState extends State<ProfilePage> {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              // Perform logout
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Logged out successfully'),
-                  backgroundColor: Colors.blue,
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              await AuthService.logout();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Logged out successfully'),
+                    backgroundColor: Colors.blue,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginPage()),
+                  (route) => false,
+                );
+              }
             },
             style: TextButton.styleFrom(
               foregroundColor: Colors.red,

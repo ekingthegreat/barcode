@@ -1,7 +1,10 @@
 // lib/screens/transactions_page.dart
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/order_service.dart';
+import '../services/receipt_service.dart';
 
 class TransactionsPage extends StatefulWidget {
   const TransactionsPage({super.key});
@@ -22,6 +25,23 @@ class _TransactionsPageState extends State<TransactionsPage> {
   void initState() {
     super.initState();
     _loadTransactions();
+  }
+
+  static double _toDouble(dynamic val) {
+    if (val == null) return 0.0;
+    if (val is num) return val.toDouble();
+    return double.tryParse(val.toString()) ?? 0.0;
+  }
+
+  static int _toInt(dynamic val) {
+    if (val == null) return 0;
+    if (val is num) return val.toInt();
+    return int.tryParse(val.toString()) ?? 0;
+  }
+
+  static DateTime _parseDate(dynamic dateStr) {
+    if (dateStr == null) return DateTime.now();
+    return DateTime.tryParse(dateStr.toString()) ?? DateTime.now();
   }
 
   Future<void> _loadTransactions() async {
@@ -54,8 +74,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
     switch (_filterType) {
       case 'Today':
         filtered = filtered.where((t) {
-          final date = DateTime.tryParse(t['order_date']?.toString() ?? '');
-          if (date == null) return false;
+          final date = _parseDate(t['order_date'] ?? t['created_at']);
           return date.year == now.year &&
               date.month == now.month &&
               date.day == now.day;
@@ -64,16 +83,14 @@ class _TransactionsPageState extends State<TransactionsPage> {
       case 'Week':
         final weekAgo = now.subtract(const Duration(days: 7));
         filtered = filtered.where((t) {
-          final date = DateTime.tryParse(t['order_date']?.toString() ?? '');
-          if (date == null) return false;
+          final date = _parseDate(t['order_date'] ?? t['created_at']);
           return date.isAfter(weekAgo);
         }).toList();
         break;
       case 'Month':
         final monthAgo = now.subtract(const Duration(days: 30));
         filtered = filtered.where((t) {
-          final date = DateTime.tryParse(t['order_date']?.toString() ?? '');
-          if (date == null) return false;
+          final date = _parseDate(t['order_date'] ?? t['created_at']);
           return date.isAfter(monthAgo);
         }).toList();
         break;
@@ -85,22 +102,26 @@ class _TransactionsPageState extends State<TransactionsPage> {
     // Filter by search query
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
-      filtered = filtered.where((t) =>
-        (t['customer_name']?.toString() ?? '').toLowerCase().contains(query) ||
-        (t['order_id']?.toString() ?? '').toLowerCase().contains(query)
-      ).toList();
+      filtered = filtered.where((t) {
+        final custName = (t['customer_name']?.toString() ?? '').toLowerCase();
+        final orderId = (t['order_id'] ?? t['id'] ?? '').toString().toLowerCase();
+        return custName.contains(query) || orderId.contains(query);
+      }).toList();
     }
 
     // Sort transactions
     switch (_sortBy) {
       case 'date':
-        filtered.sort((a, b) =>
-            (b['order_date']?.toString() ?? '').compareTo(a['order_date']?.toString() ?? ''));
+        filtered.sort((a, b) {
+          final dateA = _parseDate(a['order_date'] ?? a['created_at']);
+          final dateB = _parseDate(b['order_date'] ?? b['created_at']);
+          return dateB.compareTo(dateA);
+        });
         break;
       case 'amount':
         filtered.sort((a, b) {
-          final amountA = (a['total_amount'] as num?)?.toDouble() ?? 0.0;
-          final amountB = (b['total_amount'] as num?)?.toDouble() ?? 0.0;
+          final amountA = _toDouble(a['total_amount']);
+          final amountB = _toDouble(b['total_amount']);
           return amountB.compareTo(amountA);
         });
         break;
@@ -113,7 +134,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
     final filtered = _getFilteredTransactions();
     return filtered.fold<double>(
       0.0,
-      (sum, t) => sum + ((t['total_amount'] as num?)?.toDouble() ?? 0.0),
+      (sum, t) => sum + _toDouble(t['total_amount']),
     );
   }
 
@@ -124,7 +145,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
       return sum +
           items.fold<int>(
             0,
-            (s, i) => s + ((i['quantity'] as num?)?.toInt() ?? 0),
+            (s, i) => s + _toInt(i['quantity'] ?? 1),
           );
     });
   }
@@ -142,6 +163,8 @@ class _TransactionsPageState extends State<TransactionsPage> {
   void _showTransactionDetails(Map<String, dynamic> transaction) {
     final items = transaction['items'] as List? ?? [];
     final dateFormat = DateFormat('MMM dd, yyyy hh:mm a');
+    final date = _parseDate(transaction['order_date'] ?? transaction['created_at']);
+    final orderId = transaction['order_id'] ?? transaction['id'] ?? '';
 
     showModalBottomSheet(
       context: context,
@@ -178,12 +201,12 @@ class _TransactionsPageState extends State<TransactionsPage> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.green.shade50,
+                        color: Colors.deepPurple.shade50,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
                         Icons.receipt_long,
-                        color: Colors.green.shade700,
+                        color: Colors.deepPurple.shade700,
                         size: 28,
                       ),
                     ),
@@ -193,7 +216,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Order #${transaction['order_id']}',
+                            'Order #$orderId',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -226,7 +249,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
                   children: [
                     _buildStatChip(
                       'Date',
-                      dateFormat.format(DateTime.tryParse(transaction['order_date']?.toString() ?? '') ?? DateTime.now()),
+                      dateFormat.format(date),
                       Icons.calendar_today,
                       Colors.blue,
                     ),
@@ -238,7 +261,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
                     ),
                     _buildStatChip(
                       'Total',
-                      '₱${transaction['total_amount'].toStringAsFixed(2)}',
+                      '₱${_toDouble(transaction['total_amount']).toStringAsFixed(2)}',
                       Icons.attach_money,
                       Colors.green,
                     ),
@@ -270,74 +293,81 @@ class _TransactionsPageState extends State<TransactionsPage> {
                 const SizedBox(height: 12),
                 // Items list
                 Expanded(
-                  child: ListView.builder(
-                    controller: scrollController,
-                    itemCount: items.length,
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        elevation: 1,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.deepPurple.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  '${index + 1}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepPurple.shade700,
-                                  ),
-                                ),
+                  child: items.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No items recorded for this order',
+                            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: scrollController,
+                          itemCount: items.length,
+                          itemBuilder: (context, index) {
+                            final item = items[index];
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              elevation: 1,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Row(
                                   children: [
-                                    Text(
-                                      item['product_name'] ?? 'Unknown Product',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14,
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.deepPurple.shade50,
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                      child: Text(
+                                        '${index + 1}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.deepPurple.shade700,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            item['product_name'] ?? 'Product',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 14,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          Text(
+                                            '₱${_toDouble(item['price']).toStringAsFixed(2)} × ${_toInt(item['quantity'] ?? 1)}',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                     Text(
-                                      '₱${(item['price'] ?? 0).toStringAsFixed(2)} × ${item['quantity']}',
+                                      '₱${_toDouble(item['total']).toStringAsFixed(2)}',
                                       style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade600,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                        color: Colors.deepPurple.shade700,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                              Text(
-                                '₱${(item['total'] ?? 0).toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: Colors.deepPurple,
-                                ),
-                              ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
                 ),
                 const SizedBox(height: 8),
                 // Payment details
@@ -357,11 +387,33 @@ class _TransactionsPageState extends State<TransactionsPage> {
                       const Divider(height: 12),
                       _buildPaymentRow(
                         'Change',
-                        transaction['change'],
+                        transaction['change'] ?? transaction['change_amount'],
                         color: Colors.green,
                         bold: true,
                       ),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      ReceiptService.printDirect(transaction, context: context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple.shade700,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    icon: const Icon(Icons.print, size: 20),
+                    label: const Text(
+                      'PRINT RECEIPT (58mm)',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -401,7 +453,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
     );
   }
 
-  Widget _buildPaymentRow(String label, double? amount, {Color? color, bool bold = false}) {
+  Widget _buildPaymentRow(String label, dynamic amount, {Color? color, bool bold = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -416,7 +468,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
             ),
           ),
           Text(
-            '₱${(amount ?? 0).toStringAsFixed(2)}',
+            '₱${_toDouble(amount).toStringAsFixed(2)}',
             style: TextStyle(
               fontSize: bold ? 16 : 13,
               fontWeight: bold ? FontWeight.bold : FontWeight.w600,
@@ -442,11 +494,11 @@ class _TransactionsPageState extends State<TransactionsPage> {
                 autofocus: true,
                 decoration: InputDecoration(
                   hintText: 'Search by customer or order ID...',
-                  hintStyle: TextStyle(color: Colors.grey.shade400),
+                  hintStyle: TextStyle(color: Colors.grey.shade300),
                   border: InputBorder.none,
                   filled: true,
-                  fillColor: Colors.white.withOpacity(0.2),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  fillColor: Colors.white.withOpacity(0.15),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
                 style: const TextStyle(color: Colors.white, fontSize: 16),
                 onChanged: (value) {
@@ -713,9 +765,10 @@ class _TransactionsPageState extends State<TransactionsPage> {
   Widget _buildTransactionCard(Map<String, dynamic> transaction) {
     final dateFormat = DateFormat('MMM dd, yyyy');
     final timeFormat = DateFormat('hh:mm a');
-    final date = DateTime.tryParse(transaction['order_date']?.toString() ?? '') ?? DateTime.now();
+    final date = _parseDate(transaction['order_date'] ?? transaction['created_at']);
     final items = transaction['items'] as List? ?? [];
-    final itemCount = items.length;
+    final totalUnits = items.fold<int>(0, (sum, i) => sum + _toInt(i['quantity'] ?? 1));
+    final orderId = transaction['order_id'] ?? transaction['id'] ?? '';
     
     // Determine if it's a recent transaction (within last hour)
     final isRecent = DateTime.now().difference(date).inHours < 1;
@@ -754,7 +807,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
                         Row(
                           children: [
                             Text(
-                              'Order #${transaction['order_id']}',
+                              'Order #$orderId',
                               style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold,
@@ -811,16 +864,16 @@ class _TransactionsPageState extends State<TransactionsPage> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '₱${(transaction['total_amount'] ?? 0).toStringAsFixed(2)}',
-                        style: const TextStyle(
+                        '₱${_toDouble(transaction['total_amount']).toStringAsFixed(2)}',
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Colors.deepPurple,
+                          color: Colors.deepPurple.shade700,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '$itemCount item${itemCount > 1 ? 's' : ''}',
+                        '$totalUnits item${totalUnits != 1 ? 's' : ''}',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey.shade600,

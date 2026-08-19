@@ -1,20 +1,5 @@
-// lib/models/order_item.dart
-
-class Product {
-  final String barcode;
-  final String productName;
-  final String brand;
-  final String category;
-  final double price;
-
-  Product({
-    required this.barcode,
-    required this.productName,
-    required this.brand,
-    required this.category,
-    required this.price,
-  });
-}
+// lib/services/order_item.dart
+import '../models/product.dart';
 
 class OrderItem {
   final Product product;

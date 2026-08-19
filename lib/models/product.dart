@@ -35,14 +35,14 @@ class Product {
 
   factory Product.fromMap(Map<String, dynamic> map) {
     return Product(
-      id: map['id'],
-      barcode: map['barcode'] ?? '',
-      productName: map['product_name'] ?? '',
-      brand: map['brand'] ?? '',
-      category: map['category'] ?? '',
-      price: double.parse(map['price']?.toString() ?? '0'),
-      stock: int.parse(map['stock']?.toString() ?? '0'),
-      imageUrl: map['image_url'],
+      id: map['id'] is int ? map['id'] : int.tryParse(map['id']?.toString() ?? ''),
+      barcode: map['barcode']?.toString() ?? '',
+      productName: map['product_name']?.toString() ?? '',
+      brand: map['brand']?.toString() ?? '',
+      category: map['category']?.toString() ?? '',
+      price: double.tryParse(map['price']?.toString() ?? '0') ?? 0.0,
+      stock: int.tryParse(map['stock']?.toString() ?? '0') ?? 0,
+      imageUrl: map['image_url']?.toString(),
     );
   }
 }

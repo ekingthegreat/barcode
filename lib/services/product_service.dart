@@ -1,18 +1,10 @@
 import 'dart:convert';
-
 import 'package:http/http.dart' as http;
-
+import '../config/api_config.dart';
 import '../models/product.dart';
 
 class ProductService {
-
-  // Android emulator
-  static const String baseUrl =
-      'http://192.168.1.180/barcode/products';
-
-  // If using a physical Android phone,
-  // replace 10.0.2.2 with your computer's
-  // local IP address.
+  static const String baseUrl = ApiConfig.productsUrl;
 
   static Future<bool> registerProduct(Product product) async {
     try {

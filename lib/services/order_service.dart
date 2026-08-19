@@ -1,9 +1,10 @@
 // lib/services/order_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 
 class OrderService {
-  static const String baseUrl = 'http://192.168.1.180/barcode';
+  static const String baseUrl = ApiConfig.baseUrl;
 
   static Future<bool> saveOrder(Map<String, dynamic> orderData) async {
     try {
