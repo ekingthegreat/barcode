@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -43,14 +44,50 @@ class ReceiptService {
     }
   }
 
+  /// Requests all necessary Bluetooth & Nearby Devices runtime permissions on Android
+  static Future<bool> requestBluetoothPermissions() async {
+    if (Platform.isWindows) return true;
+    try {
+      // 1. Android 12+ (API 31+) permissions: Bluetooth Scan & Connect (Nearby Devices)
+      final Map<Permission, PermissionStatus> statuses = await [
+        Permission.bluetoothConnect,
+        Permission.bluetoothScan,
+      ].request();
+
+      final connectGranted = statuses[Permission.bluetoothConnect]?.isGranted ?? false;
+      final scanGranted = statuses[Permission.bluetoothScan]?.isGranted ?? false;
+
+      // 2. Android 6-11 requires Location permission for Bluetooth discovery
+      final locStatus = await Permission.location.request();
+
+      // Check plugin status as well
+      final pluginPerm = await PrintBluetoothThermal.isPermissionBluetoothGranted
+          .timeout(const Duration(milliseconds: 1500), onTimeout: () => false);
+
+      return connectGranted || scanGranted || locStatus.isGranted || pluginPerm;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Checks if Bluetooth runtime permission is granted on Android
   static Future<bool> isBluetoothPermissionGranted() async {
     try {
       if (Platform.isWindows) return true;
-      return await PrintBluetoothThermal.isPermissionBluetoothGranted
-          .timeout(const Duration(milliseconds: 1500), onTimeout: () => true);
+
+      // 1. Check native plugin status
+      final pluginPerm = await PrintBluetoothThermal.isPermissionBluetoothGranted
+          .timeout(const Duration(milliseconds: 1500), onTimeout: () => false);
+      if (pluginPerm) return true;
+
+      // 2. Check permission_handler status
+      final connectStatus = await Permission.bluetoothConnect.status;
+      final scanStatus = await Permission.bluetoothScan.status;
+      final locStatus = await Permission.location.status;
+
+      return connectStatus.isGranted || scanStatus.isGranted || locStatus.isGranted;
     } catch (_) {
-      return true;
+      return false;
     }
   }
 
@@ -60,6 +97,14 @@ class ReceiptService {
   static Future<List<DiscoveredPrinter>> getAllPrinters() async {
     final List<DiscoveredPrinter> results = [];
     final Set<String> seenNames = {};
+
+    // 0. Ensure Bluetooth permissions are granted on Android before scanning
+    try {
+      final hasPerm = await isBluetoothPermissionGranted();
+      if (!hasPerm) {
+        await requestBluetoothPermissions();
+      }
+    } catch (_) {}
 
     // 1. Scan Paired Bluetooth Devices directly from Android Bluetooth Adapter
     try {
@@ -353,8 +398,7 @@ class ReceiptService {
     bytes += generator.hr(ch: '=');
     bytes += generator.text('Thank you for your purchase!', styles: const PosStyles(align: PosAlign.center, bold: true));
     bytes += generator.text('Please come again', styles: const PosStyles(align: PosAlign.center));
-    bytes += generator.feed(2);
-    bytes += generator.cut();
+    bytes += generator.emptyLines(3);
 
     return bytes;
   }
@@ -377,23 +421,52 @@ class ReceiptService {
         return false;
       }
 
-      // 1. Bluetooth Thermal Printing (Officom, POS-58, MTP-2)
+      // 1. Bluetooth Thermal Printing (Officom, POS-58, MTP-2, GOOJPRT, etc.)
       if (printer.isBluetooth && printer.address.isNotEmpty) {
+        // Ensure permissions are granted before connecting
+        final hasPerm = await isBluetoothPermissionGranted();
+        if (!hasPerm) {
+          final granted = await requestBluetoothPermissions();
+          if (!granted) {
+            throw Exception('Bluetooth / Nearby Devices permission is required to print.');
+          }
+        }
+
         final isConnected = await PrintBluetoothThermal.connectionStatus
-            .timeout(const Duration(milliseconds: 1500), onTimeout: () => false);
+            .timeout(const Duration(milliseconds: 1000), onTimeout: () => false);
 
         if (!isConnected) {
+          // Always safely disconnect any stale / half-open RFCOMM socket first
+          try {
+            await PrintBluetoothThermal.disconnect;
+          } catch (_) {}
+
           final connected = await PrintBluetoothThermal.connect(macPrinterAddress: printer.address)
-              .timeout(const Duration(seconds: 5), onTimeout: () => false);
+              .timeout(const Duration(seconds: 7), onTimeout: () => false);
           if (!connected) {
-            throw Exception('Could not connect to ${printer.name}. Please ensure the printer is turned ON and in Bluetooth range.');
+            throw Exception('Could not connect to ${printer.name}. Please ensure the printer is turned ON and paired in phone Bluetooth settings.');
           }
         }
 
         final bytes = await generateEscPosBytes(orderData);
-        final result = await PrintBluetoothThermal.writeBytes(bytes)
-            .timeout(const Duration(seconds: 5), onTimeout: () => false);
-        return result;
+
+        // Chunk transmission (256-byte blocks) to prevent buffer overflows on low-cost thermal printers
+        const chunkSize = 256;
+        bool allSent = true;
+        for (int i = 0; i < bytes.length; i += chunkSize) {
+          final end = (i + chunkSize < bytes.length) ? i + chunkSize : bytes.length;
+          final chunk = bytes.sublist(i, end);
+          final sent = await PrintBluetoothThermal.writeBytes(chunk)
+              .timeout(const Duration(seconds: 5), onTimeout: () => false);
+          if (!sent) {
+            allSent = false;
+            break;
+          }
+          if (end < bytes.length) {
+            await Future.delayed(const Duration(milliseconds: 20));
+          }
+        }
+        return allSent;
       }
 
       // 2. Wired USB / System Desktop Printing

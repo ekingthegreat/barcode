@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/receipt_service.dart';
 import 'receipt_view.dart';
 
@@ -435,6 +436,7 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
   List<DiscoveredPrinter> _allPrinters = [];
   bool _isLoading = true;
   bool _isBluetoothOn = true;
+  bool _hasBtPermission = true;
   String? _savedPrinterName;
   String? _savedPrinterType;
   DiscoveredPrinter? _selectedPrinter;
@@ -453,6 +455,10 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
 
     try {
       final isBtOn = await ReceiptService.isBluetoothEnabled();
+      bool hasPerm = await ReceiptService.isBluetoothPermissionGranted();
+      if (!hasPerm) {
+        hasPerm = await ReceiptService.requestBluetoothPermissions();
+      }
       final savedName = await ReceiptService.getSavedPrinterName();
       final savedType = await ReceiptService.getSavedPrinterType();
       final list = await ReceiptService.getAllPrinters();
@@ -471,6 +477,7 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
       if (mounted) {
         setState(() {
           _isBluetoothOn = isBtOn;
+          _hasBtPermission = hasPerm;
           _allPrinters = list;
           _savedPrinterName = savedName;
           _savedPrinterType = savedType;
@@ -677,6 +684,44 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
                           color: Colors.orange.shade900,
                         ),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // Nearby Devices / Bluetooth Permission Warning
+            if (!_hasBtPermission)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade400),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.security, color: Colors.amber.shade900, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Nearby Devices permission is required to scan & print via Bluetooth.',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.amber.shade900,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final granted = await ReceiptService.requestBluetoothPermissions();
+                        if (!granted) {
+                          await openAppSettings();
+                        }
+                        _loadPrinters();
+                      },
+                      child: const Text('ALLOW', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5)),
                     ),
                   ],
                 ),
