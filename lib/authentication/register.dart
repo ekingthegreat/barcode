@@ -2,7 +2,9 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import '../main.dart';
 import '../services/auth_service.dart';
+import '../widgets/app_logo.dart';
 import 'login.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -112,15 +114,12 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
         );
 
-        // Navigate back to login
-        if (Navigator.canPop(context)) {
-          Navigator.pop(context);
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const LoginPage()),
-          );
-        }
+        // Redirect directly to the Homepage (logged in)
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const MyHomePage()),
+          (route) => false,
+        );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -258,19 +257,7 @@ class _RegisterPageState extends State<RegisterPage> {
               children: [
                 Row(
                   children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.person_add_alt_1,
-                        color: Colors.deepPurple.shade700,
-                        size: 24,
-                      ),
-                    ),
+                    const AppLogo(size: 46),
                     const SizedBox(width: 14),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

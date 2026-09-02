@@ -1,91 +1,62 @@
 // lib/services/auth_service.dart
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../config/api_config.dart';
+import '../database/database_helper.dart';
 
 class AuthService {
-  // Backend API URL (aligned with ProductService and OrderService)
-  static const String baseUrl = ApiConfig.authUrl;
+  static final DatabaseHelper _db = DatabaseHelper.instance;
 
-  /// Performs login via API or local credentials verification
+  /// Returns the current logged in user ID
+  static Future<int> getCurrentUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('user_id') ?? 1;
+  }
+
+  /// Performs offline login via SQLite users table and stores session
   static Future<Map<String, dynamic>> login({
     required String usernameOrEmail,
     required String password,
   }) async {
     try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/login.php'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode({
-              'username_or_email': usernameOrEmail,
-              'password': password,
-            }),
-          )
-          .timeout(const Duration(seconds: 5));
+      final user = await _db.authenticateUser(
+        usernameOrEmail: usernameOrEmail,
+        password: password,
+      );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          final user = data['user'] ?? {};
-          await saveUserSession({
-            'username': user['username'] ?? usernameOrEmail,
-            'email': user['email'] ?? usernameOrEmail,
-            'store_name': user['store_name'] ?? 'My Store',
-            'store_address': user['store_address'] ?? '123 Main Street, City',
-            'phone': user['phone'] ?? '+63 912 345 6789',
-            'role': user['role'] ?? 'Admin',
-          });
-          return {'success': true, 'message': data['message'] ?? 'Login successful'};
-        } else {
-          return {'success': false, 'message': data['message'] ?? 'Invalid credentials'};
-        }
+      if (user != null) {
+        final userId = user['id'] is int
+            ? user['id'] as int
+            : int.tryParse(user['id']?.toString() ?? '1') ?? 1;
+
+        await saveUserSession({
+          'user_id': userId,
+          'username': user['username'] ?? usernameOrEmail,
+          'email': user['email'] ?? usernameOrEmail,
+          'store_name': user['store_name'] ?? 'My Store',
+          'store_address': user['store_address'] ?? '123 Main Street, City',
+          'phone': user['phone'] ?? '+63 912 345 6789',
+          'role': user['role'] ?? 'Admin',
+        });
+
+        return {
+          'success': true,
+          'message': 'Login successful',
+          'user': user,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Invalid username/email or password',
+        };
       }
-    } catch (_) {
-      // If network fails / backend is offline, check local SharedPreferences
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Login error: $e',
+      };
     }
-
-    // Fallback to local session / saved user
-    final prefs = await SharedPreferences.getInstance();
-    final savedEmail = prefs.getString('email') ?? '';
-    final savedUsername = prefs.getString('username') ?? '';
-    final savedPassword = prefs.getString('password') ?? '';
-
-    // If local user exists and matches
-    if ((usernameOrEmail == savedEmail || usernameOrEmail == savedUsername) &&
-        (savedPassword.isEmpty || savedPassword == password)) {
-      await prefs.setBool('is_logged_in', true);
-      return {'success': true, 'message': 'Login successful (Offline mode)'};
-    }
-
-    // Default demo login fallback if credentials are provided
-    if (usernameOrEmail.isNotEmpty && password.isNotEmpty) {
-      // Save provided credentials for demo/offline use
-      await saveUserSession({
-        'username': usernameOrEmail.contains('@')
-            ? usernameOrEmail.split('@').first
-            : usernameOrEmail,
-        'email': usernameOrEmail.contains('@')
-            ? usernameOrEmail
-            : '$usernameOrEmail@example.com',
-        'store_name': prefs.getString('store_name') ?? 'My Store',
-        'store_address':
-            prefs.getString('store_address') ?? '123 Main Street, City',
-        'phone': prefs.getString('phone') ?? '+63 912 345 6789',
-        'role': prefs.getString('role') ?? 'Admin',
-      });
-      await prefs.setString('password', password);
-      return {'success': true, 'message': 'Login successful'};
-    }
-
-    return {'success': false, 'message': 'Invalid username/email or password'};
   }
 
-  /// Registers a new account via API or local storage
+  /// Registers a new account into SQLite database and sets up active session
   static Future<Map<String, dynamic>> register({
     required String username,
     required String email,
@@ -96,63 +67,63 @@ class AuthService {
     String role = 'Admin',
   }) async {
     try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/register.php'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode({
-              'username': username,
-              'email': email,
-              'password': password,
-              'store_name': storeName,
-              'phone': phone,
-              'store_address': storeAddress,
-              'role': role,
-            }),
-          )
-          .timeout(const Duration(seconds: 5));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          await saveUserSession({
-            'username': username,
-            'email': email,
-            'store_name': storeName,
-            'store_address': storeAddress,
-            'phone': phone,
-            'role': role,
-          });
-          return {'success': true, 'message': data['message'] ?? 'Registration successful'};
-        } else {
-          return {'success': false, 'message': data['message'] ?? 'Registration failed'};
-        }
+      final exists = await _db.userExists(username, email);
+      if (exists) {
+        return {
+          'success': false,
+          'message': 'Username or Email is already registered',
+        };
       }
-    } catch (_) {
-      // Backend offline fallback
+
+      final userId = await _db.registerUser({
+        'username': username,
+        'email': email,
+        'password': password,
+        'store_name': storeName,
+        'store_address': storeAddress,
+        'phone': phone,
+        'role': role,
+      });
+
+      if (userId != null && userId > 0) {
+        await saveUserSession({
+          'user_id': userId,
+          'username': username,
+          'email': email,
+          'store_name': storeName,
+          'store_address': storeAddress,
+          'phone': phone,
+          'role': role,
+        });
+
+        return {
+          'success': true,
+          'message': 'Account registered successfully',
+          'user_id': userId,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Failed to save account to database',
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Registration error: $e',
+      };
     }
-
-    // Local registration fallback
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('password', password);
-    await saveUserSession({
-      'username': username,
-      'email': email,
-      'store_name': storeName,
-      'store_address': storeAddress,
-      'phone': phone,
-      'role': role,
-    });
-
-    return {'success': true, 'message': 'Account registered successfully'};
   }
 
   /// Saves user profile and login state in SharedPreferences
   static Future<void> saveUserSession(Map<String, dynamic> userData) async {
     final prefs = await SharedPreferences.getInstance();
+    if (userData['user_id'] != null) {
+      final uid = userData['user_id'] is int
+          ? userData['user_id'] as int
+          : int.tryParse(userData['user_id'].toString()) ?? 1;
+      await prefs.setInt('user_id', uid);
+    }
     if (userData['username'] != null) {
       await prefs.setString('username', userData['username'].toString());
     }
@@ -163,8 +134,7 @@ class AuthService {
       await prefs.setString('store_name', userData['store_name'].toString());
     }
     if (userData['store_address'] != null) {
-      await prefs.setString(
-          'store_address', userData['store_address'].toString());
+      await prefs.setString('store_address', userData['store_address'].toString());
     }
     if (userData['phone'] != null) {
       await prefs.setString('phone', userData['phone'].toString());
@@ -181,7 +151,7 @@ class AuthService {
     return prefs.getBool('is_logged_in') ?? false;
   }
 
-  /// Updates user profile on backend database and in SharedPreferences
+  /// Updates user profile on SQLite database and in SharedPreferences
   static Future<Map<String, dynamic>> updateProfile({
     required String username,
     required String email,
@@ -191,65 +161,54 @@ class AuthService {
     String? originalUsername,
     String? originalEmail,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final origUser = originalUsername ?? prefs.getString('username') ?? '';
-    final origEmail = originalEmail ?? prefs.getString('email') ?? '';
-
     try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/update_profile.php'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode({
-              'username': username,
-              'email': email,
-              'store_name': storeName,
-              'store_address': storeAddress,
-              'phone': phone,
-              'original_username': origUser,
-              'original_email': origEmail,
-            }),
-          )
-          .timeout(const Duration(seconds: 5));
+      final userId = await getCurrentUserId();
+      final success = await _db.updateUserProfile(
+        userId: userId,
+        username: username,
+        email: email,
+        storeName: storeName,
+        storeAddress: storeAddress,
+        phone: phone,
+      );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          await saveUserSession({
-            'username': username,
-            'email': email,
-            'store_name': storeName,
-            'store_address': storeAddress,
-            'phone': phone,
-          });
-          return {'success': true, 'message': data['message'] ?? 'Profile updated successfully'};
-        } else {
-          return {'success': false, 'message': data['message'] ?? 'Failed to update profile'};
-        }
+      if (success) {
+        await saveUserSession({
+          'user_id': userId,
+          'username': username,
+          'email': email,
+          'store_name': storeName,
+          'store_address': storeAddress,
+          'phone': phone,
+        });
+        return {
+          'success': true,
+          'message': 'Profile updated successfully',
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Failed to update profile',
+        };
       }
-    } catch (_) {
-      // Backend offline fallback
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Update error: $e',
+      };
     }
-
-    // Local save fallback
-    await saveUserSession({
-      'username': username,
-      'email': email,
-      'store_name': storeName,
-      'store_address': storeAddress,
-      'phone': phone,
-    });
-
-    return {'success': true, 'message': 'Profile updated successfully'};
   }
 
-  /// Logs out user
+  /// Logs out user and clears active session
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_logged_in', false);
+    await prefs.remove('user_id');
+    await prefs.remove('username');
+    await prefs.remove('email');
+    await prefs.remove('store_name');
+    await prefs.remove('store_address');
+    await prefs.remove('phone');
+    await prefs.remove('role');
   }
 }
-

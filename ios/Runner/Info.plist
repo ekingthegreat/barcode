@@ -66,5 +66,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera permission is required to scan barcodes and QR codes.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Bluetooth permission is required to connect to 58mm thermal receipt printers.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Bluetooth permission is required to connect to 58mm thermal receipt printers.</string>
 </dict>
 </plist>

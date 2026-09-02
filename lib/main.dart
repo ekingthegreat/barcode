@@ -11,8 +11,15 @@ import 'authentication/login.dart';
 import 'authentication/register.dart';
 import 'services/auth_service.dart';
 import 'services/stats_service.dart';
+import 'services/sound_service.dart';
+import 'database/database_helper.dart';
+import 'widgets/app_logo.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Initialize local SQLite database & sound engine
+  await DatabaseHelper.instance.database;
+  SoundService.init();
   runApp(const MyApp());
 }
 
@@ -128,7 +135,7 @@ class _MyHomePageState extends State<MyHomePage> {
           type: BottomNavigationBarType.fixed,
           currentIndex: _selectedIndex,
           onTap: _onItemTapped,
-          selectedItemColor: Colors.deepPurple.shade700,
+          selectedItemColor: const Color(0xFF512DA8),
           unselectedItemColor: Colors.grey.shade600,
           selectedLabelStyle: const TextStyle(
             fontSize: 12,
@@ -289,12 +296,18 @@ class _HomeContentState extends State<HomeContent> {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text(
-          'Inventory Management',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
+        title: const Row(
+          children: [
+            AppLogo(size: 32),
+            SizedBox(width: 10),
+            Text(
+              'Inventory Management',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 19,
+              ),
+            ),
+          ],
         ),
         backgroundColor: Colors.white,
         elevation: 0,

@@ -1,6 +1,7 @@
 // lib/models/product.dart
 class Product {
   final int? id;
+  final int? userId;
   final String barcode;
   final String productName;
   final String brand;
@@ -11,6 +12,7 @@ class Product {
 
   Product({
     this.id,
+    this.userId,
     required this.barcode,
     required this.productName,
     required this.brand,
@@ -23,6 +25,7 @@ class Product {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      if (userId != null) 'user_id': userId,
       'barcode': barcode,
       'product_name': productName,
       'brand': brand,
@@ -36,6 +39,7 @@ class Product {
   factory Product.fromMap(Map<String, dynamic> map) {
     return Product(
       id: map['id'] is int ? map['id'] : int.tryParse(map['id']?.toString() ?? ''),
+      userId: map['user_id'] is int ? map['user_id'] : int.tryParse(map['user_id']?.toString() ?? ''),
       barcode: map['barcode']?.toString() ?? '',
       productName: map['product_name']?.toString() ?? '',
       brand: map['brand']?.toString() ?? '',

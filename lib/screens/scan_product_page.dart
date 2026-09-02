@@ -9,6 +9,9 @@ import '../services/order_item.dart';
 import '../services/product_service.dart';
 import '../services/order_service.dart';
 import '../services/receipt_service.dart';
+import '../services/sound_service.dart';
+import '../widgets/app_logo.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'register_product_page.dart';
 
 class ScanProductPage extends StatefulWidget {
@@ -119,6 +122,7 @@ class _ScanProductPageState extends State<ScanProductPage> {
 
       if (existingIndex != -1) {
         // Product already in cart, increase quantity
+        SoundService.playSuccessBeep();
         setState(() {
           cartItems[existingIndex].quantity++;
           _updateTotal();
@@ -144,12 +148,14 @@ class _ScanProductPageState extends State<ScanProductPage> {
       if (!mounted) return;
 
       if (product == null) {
+        SoundService.playErrorBeep();
         _showNotFoundDialog(barcode);
         return;
       }
 
       // Check stock availability
       if (product.stock <= 0) {
+        SoundService.playErrorBeep();
         _showErrorDialog(
           'Out of Stock',
           '${product.productName} is currently out of stock.',
@@ -158,7 +164,8 @@ class _ScanProductPageState extends State<ScanProductPage> {
         return;
       }
 
-      // Add product to cart
+      // Success: Play scanner beep and add product to cart
+      SoundService.playSuccessBeep();
       setState(() {
         cartItems.add(OrderItem(
           product: product,
@@ -177,6 +184,7 @@ class _ScanProductPageState extends State<ScanProductPage> {
       );
     } catch (e) {
       if (!mounted) return;
+      SoundService.playErrorBeep();
       _showErrorDialog('Error', 'An error occurred: $e');
     } finally {
       if (mounted) {
@@ -573,6 +581,12 @@ class _ScanProductPageState extends State<ScanProductPage> {
                           isSavingOrder = true;
                         });
 
+                        final prefs = await SharedPreferences.getInstance();
+                        final storeName = prefs.getString('store_name') ?? 'My Store';
+                        final storeAddress = prefs.getString('store_address') ?? '123 Main Street, City';
+                        final phone = prefs.getString('phone') ?? '+63 912 345 6789';
+                        final cashierName = prefs.getString('username') ?? 'Cashier';
+
                         final orderData = {
                           'customer_name': customerNameController.text.trim().isEmpty
                               ? 'Walk-in Customer'
@@ -582,6 +596,10 @@ class _ScanProductPageState extends State<ScanProductPage> {
                           'cash_received': double.tryParse(cashReceivedController.text) ?? totalAmount,
                           'change': change,
                           'order_date': DateTime.now().toIso8601String(),
+                          'store_name': storeName,
+                          'store_address': storeAddress,
+                          'phone': phone,
+                          'cashier_name': cashierName,
                         };
 
                         // 1. Save order to backend database
@@ -590,6 +608,7 @@ class _ScanProductPageState extends State<ScanProductPage> {
                         if (!mounted) return;
 
                         if (saved) {
+                          SoundService.playCashBeep();
                           lastCompletedOrder = orderData;
 
                           // 2. Direct print 58mm receipt (no browser/preview popup)
@@ -811,9 +830,16 @@ class _ScanProductPageState extends State<ScanProductPage> {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text(
-          'Scan Product',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19),
+        title: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppLogo(size: 28),
+            SizedBox(width: 8),
+            Text(
+              'Scan Product',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19),
+            ),
+          ],
         ),
         backgroundColor: Colors.deepPurple.shade700,
         foregroundColor: Colors.white,

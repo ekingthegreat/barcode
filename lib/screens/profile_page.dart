@@ -9,6 +9,7 @@ import '../authentication/login.dart';
 import '../services/auth_service.dart';
 import '../services/stats_service.dart';
 import '../services/receipt_service.dart';
+import '../widgets/app_logo.dart';
 
 
 class ProfilePage extends StatefulWidget {
@@ -385,12 +386,19 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text(
-          'Profile',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
+        title: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppLogo(size: 28),
+            SizedBox(width: 8),
+            Text(
+              'Profile',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+              ),
+            ),
+          ],
         ),
         backgroundColor: Colors.deepPurple.shade700,
         elevation: 0,

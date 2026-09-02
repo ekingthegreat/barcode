@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:inventory_app/models/product.dart';
 import 'package:inventory_app/services/product_service.dart';
 import 'package:inventory_app/screens/register_product_page.dart';
+import '../widgets/app_logo.dart';
 
 class ProductsPage extends StatefulWidget {
   const ProductsPage({super.key});
@@ -328,12 +329,19 @@ class _ProductsPageState extends State<ProductsPage> {
                   });
                 },
               )
-            : const Text(
-                'Products',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                ),
+            : const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppLogo(size: 28),
+                  SizedBox(width: 8),
+                  Text(
+                    'Products',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                ],
               ),
         backgroundColor: Colors.deepPurple.shade700,
         elevation: 0,

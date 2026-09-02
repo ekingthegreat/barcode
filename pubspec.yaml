@@ -23,12 +23,23 @@ dependencies:
   print_bluetooth_thermal: ^1.2.1
   esc_pos_utils_plus: ^2.0.4
   permission_handler: 11.3.1
+  sqflite: ^2.4.1
+  sqflite_common_ffi: ^2.3.4+4
+  audioplayers: ^6.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/logo/logo.png"
+  min_sdk_android: 21
 
 flutter:
-
   uses-material-design: true
+  assets:
+    - assets/logo/

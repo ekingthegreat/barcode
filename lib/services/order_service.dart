@@ -1,55 +1,16 @@
 // lib/services/order_service.dart
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../config/api_config.dart';
+import '../database/database_helper.dart';
 
 class OrderService {
-  static const String baseUrl = ApiConfig.baseUrl;
+  static final DatabaseHelper _db = DatabaseHelper.instance;
 
+  /// Saves an order and its items into SQLite, updating product inventory stock atomically
   static Future<bool> saveOrder(Map<String, dynamic> orderData) async {
-    try {
-      final url = Uri.parse('$baseUrl/products/save.php');
-
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(orderData),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['success'] ?? false;
-      } else {
-        return false;
-      }
-    } catch (e) {
-      return false;
-    }
+    return await _db.saveOrder(orderData);
   }
 
+  /// Fetches all completed orders and their line items from SQLite
   static Future<List<Map<String, dynamic>>> getAllOrders() async {
-    try {
-      final url = Uri.parse('$baseUrl/products/get_orders.php');
-
-      final response = await http.get(
-        url,
-        headers: {
-          'Accept': 'application/json',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true && data['orders'] is List) {
-          return List<Map<String, dynamic>>.from(data['orders']);
-        }
-      }
-      return [];
-    } catch (e) {
-      return [];
-    }
+    return await _db.getAllOrders();
   }
 }

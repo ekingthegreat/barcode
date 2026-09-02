@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/order_service.dart';
 import '../services/receipt_service.dart';
+import '../widgets/app_logo.dart';
 
 class TransactionsPage extends StatefulWidget {
   const TransactionsPage({super.key});
@@ -508,12 +509,19 @@ class _TransactionsPageState extends State<TransactionsPage> {
                   });
                 },
               )
-            : const Text(
-                'Transactions',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                ),
+            : const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppLogo(size: 28),
+                  SizedBox(width: 8),
+                  Text(
+                    'Transactions',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                ],
               ),
         backgroundColor: Colors.deepPurple.shade700,
         elevation: 0,

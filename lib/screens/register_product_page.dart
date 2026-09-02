@@ -5,6 +5,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../models/product.dart';
 import '../services/product_service.dart';
+import '../services/sound_service.dart';
+import '../widgets/app_logo.dart';
 
 class RegisterProductPage extends StatefulWidget {
   final Product? initialProduct;
@@ -193,6 +195,7 @@ class _RegisterProductPageState extends State<RegisterProductPage> {
     if (raw == null || raw.isEmpty || raw.length < 3) return;
 
     if (mounted) {
+      SoundService.playSuccessBeep();
       barcodeController.text = raw;
       stopBarcodeScan();
       FocusScope.of(context).requestFocus(nameFocus);
@@ -459,19 +462,7 @@ class _RegisterProductPageState extends State<RegisterProductPage> {
               children: [
                 Row(
                   children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.inventory_2,
-                        color: Colors.deepPurple.shade700,
-                        size: 24,
-                      ),
-                    ),
+                    const AppLogo(size: 46),
                     const SizedBox(width: 14),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

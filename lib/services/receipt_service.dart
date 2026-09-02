@@ -295,10 +295,10 @@ class ReceiptService {
     List<int> bytes = [];
 
     final prefs = await SharedPreferences.getInstance();
-    final sName = prefs.getString('store_name') ?? 'INVENTORY SYSTEM';
-    final sAddress = prefs.getString('store_address') ?? '123 Main Street, City';
-    final sPhone = prefs.getString('phone') ?? '+63 912 345 6789';
-    final cashier = prefs.getString('username') ?? 'Cashier';
+    final sName = (orderData['store_name']?.toString() ?? prefs.getString('store_name') ?? 'INVENTORY SYSTEM').trim();
+    final sAddress = (orderData['store_address']?.toString() ?? prefs.getString('store_address') ?? '123 Main Street, City').trim();
+    final sPhone = (orderData['phone']?.toString() ?? prefs.getString('phone') ?? '+63 912 345 6789').trim();
+    final cashier = (orderData['cashier_name']?.toString() ?? orderData['cashier']?.toString() ?? prefs.getString('username') ?? 'Cashier').trim();
 
     // Store Header
     bytes += generator.text(
@@ -350,28 +350,34 @@ class ReceiptService {
 
     // Table Header
     bytes += generator.row([
-      PosColumn(text: 'ITEM', width: 6, styles: const PosStyles(bold: true)),
-      PosColumn(text: 'QTY', width: 2, styles: const PosStyles(align: PosAlign.center, bold: true)),
-      PosColumn(text: 'PRICE', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
-      PosColumn(text: 'TOTAL', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
+      PosColumn(text: 'ITEM / QTY / PRICE', width: 7, styles: const PosStyles(bold: true)),
+      PosColumn(text: 'TOTAL', width: 5, styles: const PosStyles(align: PosAlign.right, bold: true)),
     ]);
     bytes += generator.hr(ch: '-');
 
-    // Items List
+    // Items List (Clean 2-line layout that never overflows 58mm paper)
     final items = (orderData['items'] as List<dynamic>?) ?? [];
     for (var item in items) {
       final name = (item['product_name'] ?? 'Product').toString();
-      final barcode = item['barcode']?.toString() ?? '';
       final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
       final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
       final total = double.tryParse(item['total']?.toString() ?? '0') ?? (price * qty);
 
+      // Line 1: Product Name only (no barcode)
       bytes += generator.text(name, styles: const PosStyles(bold: true));
+
+      // Line 2: Qty x Unit Price -> Subtotal (guaranteed fit on 58mm)
       bytes += generator.row([
-        PosColumn(text: barcode.isNotEmpty ? '#$barcode' : '', width: 6),
-        PosColumn(text: '${qty}x', width: 2, styles: const PosStyles(align: PosAlign.center)),
-        PosColumn(text: price.toStringAsFixed(2), width: 2, styles: const PosStyles(align: PosAlign.right)),
-        PosColumn(text: total.toStringAsFixed(2), width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
+        PosColumn(
+          text: '  ${qty}x @ ${price.toStringAsFixed(2)}',
+          width: 7,
+          styles: const PosStyles(align: PosAlign.left),
+        ),
+        PosColumn(
+          text: 'P ${total.toStringAsFixed(2)}',
+          width: 5,
+          styles: const PosStyles(align: PosAlign.right, bold: true),
+        ),
       ]);
     }
 
@@ -485,13 +491,13 @@ class ReceiptService {
     }
   }
 
-  /// Generates plain text receipt for serial streams or clipboard
+  /// Generates plain text receipt for serial streams or clipboard (32 columns for 58mm)
   static Future<String> generateTextReceipt(Map<String, dynamic> orderData) async {
     final prefs = await SharedPreferences.getInstance();
-    final sName = prefs.getString('store_name') ?? 'INVENTORY SYSTEM';
-    final sAddress = prefs.getString('store_address') ?? '123 Main Street, City';
-    final sPhone = prefs.getString('phone') ?? '+63 912 345 6789';
-    final cashier = prefs.getString('username') ?? 'Cashier';
+    final sName = (orderData['store_name']?.toString() ?? prefs.getString('store_name') ?? 'INVENTORY SYSTEM').trim();
+    final sAddress = (orderData['store_address']?.toString() ?? prefs.getString('store_address') ?? '123 Main Street, City').trim();
+    final sPhone = (orderData['phone']?.toString() ?? prefs.getString('phone') ?? '+63 912 345 6789').trim();
+    final cashier = (orderData['cashier_name']?.toString() ?? orderData['cashier']?.toString() ?? prefs.getString('username') ?? 'Cashier').trim();
 
     final buffer = StringBuffer();
 
@@ -503,7 +509,6 @@ class ReceiptService {
     buffer.writeln('-' * 32);
     buffer.writeln('*** OFFICIAL RECEIPT ***'.center(32));
     buffer.writeln('=' * 32);
-    buffer.writeln();
 
     // Date & Customer
     final rawDate = orderData['order_date'] ?? orderData['created_at'];
@@ -511,38 +516,53 @@ class ReceiptService {
     final orderId = orderData['order_id'] ?? orderData['id'] ?? DateTime.now().millisecondsSinceEpoch.toString().substring(7);
 
     buffer.writeln('Receipt #: INV-$orderId');
-    buffer.writeln('Date: $dateStr');
+    buffer.writeln('Date: ${dateStr.length > 19 ? dateStr.substring(0, 19) : dateStr}');
     buffer.writeln('Cashier: $cashier');
     buffer.writeln('Customer: ${orderData['customer_name'] ?? 'Walk-in'}');
     buffer.writeln('-' * 32);
-    buffer.writeln();
 
     // Items Header
-    buffer.writeln('ITEM          QTY   PRICE   TOTAL');
+    buffer.writeln('ITEM / QTY / PRICE         TOTAL');
     buffer.writeln('-' * 32);
 
     final items = orderData['items'] as List<dynamic>? ?? [];
     for (var item in items) {
-      final name = (item['product_name'] ?? '').toString();
-      final truncatedName = name.length > 12 ? name.substring(0, 12) : name.padRight(12);
-      final qty = (item['quantity'] ?? 1).toString().padLeft(3);
-      final price = '₱${(double.tryParse(item['price']?.toString() ?? '0') ?? 0).toStringAsFixed(2)}'.padLeft(7);
-      final total = '₱${(double.tryParse(item['total']?.toString() ?? '0') ?? 0).toStringAsFixed(2)}'.padLeft(7);
-      buffer.writeln('$truncatedName $qty $price $total');
+      final name = (item['product_name'] ?? 'Product').toString();
+      final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+      final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+      final total = double.tryParse(item['total']?.toString() ?? '0') ?? (price * qty);
+
+      // Line 1: Name
+      buffer.writeln(name.length > 32 ? name.substring(0, 32) : name);
+
+      // Line 2: Details
+      final leftPart = '  ${qty}x @ P${price.toStringAsFixed(2)}';
+      final rightPart = 'P${total.toStringAsFixed(2)}';
+      final spacing = 32 - leftPart.length - rightPart.length;
+      if (spacing > 0) {
+        buffer.writeln('$leftPart${' ' * spacing}$rightPart');
+      } else {
+        buffer.writeln('$leftPart  $rightPart');
+      }
     }
 
     buffer.writeln('-' * 32);
-    buffer.writeln();
 
     // Totals
     final total = double.tryParse(orderData['total_amount']?.toString() ?? '0') ?? 0;
     final cash = double.tryParse(orderData['cash_received']?.toString() ?? '0') ?? 0;
     final change = double.tryParse(orderData['change']?.toString() ?? '0') ?? 0;
 
-    buffer.writeln('${'TOTAL:'.padRight(18)}₱${total.toStringAsFixed(2).padLeft(12)}');
-    buffer.writeln('${'Cash Received:'.padRight(18)}₱${cash.toStringAsFixed(2).padLeft(12)}');
-    buffer.writeln('${'Change:'.padRight(18)}₱${change.toStringAsFixed(2).padLeft(12)}');
-    buffer.writeln();
+    String formatTotalLine(String label, double val) {
+      final valStr = 'P${val.toStringAsFixed(2)}';
+      final space = 32 - label.length - valStr.length;
+      return '$label${' ' * (space > 0 ? space : 1)}$valStr';
+    }
+
+    buffer.writeln(formatTotalLine('TOTAL AMOUNT:', total));
+    buffer.writeln(formatTotalLine('Cash Received:', cash));
+    buffer.writeln(formatTotalLine('Change:', change));
+
     buffer.writeln('=' * 32);
     buffer.writeln('Thank you for your purchase!'.center(32));
     buffer.writeln('Please come again'.center(32));

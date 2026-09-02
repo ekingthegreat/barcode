@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/auth_service.dart';
+import '../widgets/app_logo.dart';
 import 'register.dart';
 
 class LoginPage extends StatefulWidget {
@@ -228,19 +229,7 @@ class _LoginPageState extends State<LoginPage> {
             ),
             child: Row(
               children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.lock_outline,
-                    color: Colors.deepPurple.shade700,
-                    size: 28,
-                  ),
-                ),
+                const AppLogo(size: 52),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(

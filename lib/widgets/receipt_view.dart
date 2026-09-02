@@ -39,10 +39,23 @@ class _ReceiptViewState extends State<ReceiptView> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
-      _storeName = widget.storeName ?? prefs.getString('store_name') ?? 'INVENTORY SYSTEM';
-      _storeAddress = widget.storeAddress ?? prefs.getString('store_address') ?? '123 Main Street, City';
-      _phone = widget.phone ?? prefs.getString('phone') ?? '+63 912 345 6789';
-      _cashier = widget.cashierName ?? prefs.getString('username') ?? 'Cashier';
+      _storeName = widget.storeName ??
+          widget.orderData['store_name']?.toString() ??
+          prefs.getString('store_name') ??
+          'INVENTORY SYSTEM';
+      _storeAddress = widget.storeAddress ??
+          widget.orderData['store_address']?.toString() ??
+          prefs.getString('store_address') ??
+          '123 Main Street, City';
+      _phone = widget.phone ??
+          widget.orderData['phone']?.toString() ??
+          prefs.getString('phone') ??
+          '+63 912 345 6789';
+      _cashier = widget.cashierName ??
+          widget.orderData['cashier_name']?.toString() ??
+          widget.orderData['cashier']?.toString() ??
+          prefs.getString('username') ??
+          'Cashier';
     });
   }
 
@@ -187,48 +200,24 @@ class _ReceiptViewState extends State<ReceiptView> {
                   const Row(
                     children: [
                       Expanded(
+                        flex: 7,
+                        child: Text(
+                          'ITEM / QTY / PRICE',
+                          style: TextStyle(
+                            fontFamily: 'Courier',
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Expanded(
                         flex: 5,
-                        child: Text(
-                          'ITEM',
-                          style: TextStyle(
-                            fontFamily: 'Courier',
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          'QTY',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: 'Courier',
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          'PRICE',
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            fontFamily: 'Courier',
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 3,
                         child: Text(
                           'TOTAL',
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             fontFamily: 'Courier',
-                            fontSize: 11,
+                            fontSize: 10.5,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -253,13 +242,12 @@ class _ReceiptViewState extends State<ReceiptView> {
                   else
                     ...items.map((item) {
                       final name = item['product_name']?.toString() ?? 'Product';
-                      final barcode = item['barcode']?.toString() ?? '';
                       final qty = _toInt(item['quantity'] ?? 1);
                       final price = _toDouble(item['price']);
                       final total = _toDouble(item['total'] ?? (price * qty));
 
                       return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        padding: const EdgeInsets.symmetric(vertical: 2.5),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -267,53 +255,31 @@ class _ReceiptViewState extends State<ReceiptView> {
                               name,
                               style: const TextStyle(
                                 fontFamily: 'Courier',
-                                fontSize: 11.5,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                             Row(
                               children: [
                                 Expanded(
-                                  flex: 5,
+                                  flex: 7,
                                   child: Text(
-                                    barcode.isNotEmpty ? '#$barcode' : '',
+                                    '  ${qty}x  @  ₱${price.toStringAsFixed(2)}',
                                     style: TextStyle(
                                       fontFamily: 'Courier',
-                                      fontSize: 9.5,
-                                      color: Colors.grey.shade600,
+                                      fontSize: 10,
+                                      color: Colors.grey.shade700,
                                     ),
                                   ),
                                 ),
                                 Expanded(
-                                  flex: 2,
-                                  child: Text(
-                                    '${qty}x',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontFamily: 'Courier',
-                                      fontSize: 10.5,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 3,
-                                  child: Text(
-                                    '₱${price.toStringAsFixed(2)}',
-                                    textAlign: TextAlign.right,
-                                    style: const TextStyle(
-                                      fontFamily: 'Courier',
-                                      fontSize: 10.5,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 3,
+                                  flex: 5,
                                   child: Text(
                                     '₱${total.toStringAsFixed(2)}',
                                     textAlign: TextAlign.right,
                                     style: const TextStyle(
                                       fontFamily: 'Courier',
-                                      fontSize: 11,
+                                      fontSize: 10.5,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),

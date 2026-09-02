@@ -1,113 +1,32 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../config/api_config.dart';
+// lib/services/product_service.dart
+import '../database/database_helper.dart';
 import '../models/product.dart';
 
 class ProductService {
-  static const String baseUrl = ApiConfig.productsUrl;
+  static final DatabaseHelper _db = DatabaseHelper.instance;
 
+  /// Registers a new product into the local SQLite database
   static Future<bool> registerProduct(Product product) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/register.php'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(
-          product.toMap(),
-        ),
-      );
-
-      final data = jsonDecode(response.body);
-      return data['success'] == true;
-    } catch (e) {
-      return false;
-    }
+    return await _db.insertProduct(product);
   }
 
+  /// Gets a product by barcode from the local SQLite database
   static Future<Product?> getProduct(String barcode) async {
-    try {
-      final response = await http.get(
-        Uri.parse(
-          '$baseUrl/get.php?barcode=$barcode',
-        ),
-      );
-
-      final data = jsonDecode(response.body);
-
-      if (data['success'] == true && data['product'] != null) {
-        return Product.fromMap(
-          data['product'],
-        );
-      }
-
-      return null;
-    } catch (e) {
-      return null;
-    }
+    return await _db.getProductByBarcode(barcode);
   }
 
+  /// Gets all products from the local SQLite database
   static Future<List<Product>> getAllProducts() async {
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/get_all.php'),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true && data['products'] is List) {
-          return (data['products'] as List)
-              .map((p) => Product.fromMap(p as Map<String, dynamic>))
-              .toList();
-        }
-      }
-      return [];
-    } catch (e) {
-      return [];
-    }
+    return await _db.getAllProducts();
   }
 
+  /// Updates an existing product in the local SQLite database
   static Future<bool> updateProduct(Product product) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/update.php'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(
-          product.toMap(),
-        ),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['success'] == true;
-      }
-      return false;
-    } catch (e) {
-      return false;
-    }
+    return await _db.updateProduct(product);
   }
 
+  /// Deletes a product from the local SQLite database
   static Future<bool> deleteProduct(String barcode) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/delete.php'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'barcode': barcode,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['success'] == true;
-      }
-      return false;
-    } catch (e) {
-      return false;
-    }
+    return await _db.deleteProduct(barcode);
   }
 }
